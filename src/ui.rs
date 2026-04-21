@@ -308,7 +308,7 @@ fn render_separator(frame: &mut Frame, area: Rect) {
 }
 
 /// Muted mid-grey used for hint bar text and separators.
-const HINT_COLOR: Color = Color::Rgb(128, 128, 128);
+const HINT_COLOR: Color = Color::Rgb(180, 180, 180);
 
 /// Renders the hint bar at the bottom of the viewport.
 fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
