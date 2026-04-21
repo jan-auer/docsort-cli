@@ -247,7 +247,7 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
     let folder_input_spans = if app.search_query.is_empty() {
         vec![
             Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
-            Span::styled("type to search", Style::default().fg(HINT_COLOR)),
+            Span::styled("type folder name", Style::default().fg(HINT_COLOR)),
         ]
     } else {
         let before: String = app
