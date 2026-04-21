@@ -137,7 +137,7 @@ fn clear_viewport(height: u16) -> Result<()> {
     let mut stdout = std::io::stdout();
     execute!(
         stdout,
-        cursor::MoveUp(height),
+        cursor::MoveUp(height.saturating_sub(1)),
         Clear(ClearType::FromCursorDown)
     )?;
     Ok(())
