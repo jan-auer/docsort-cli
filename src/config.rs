@@ -55,26 +55,36 @@ pub fn load_config(path: &Path) -> Result<Config> {
     Ok(config)
 }
 
-/// Searches for `.docsort.toml` in cwd first, then the home directory.
+/// Searches for `.docsort.toml` by walking up from cwd to root.
 ///
-/// Returns the path of the first config file found, or `None` if neither exists.
+/// Walks up the directory tree from the current working directory to the filesystem root,
+/// checking each directory for a `.docsort.toml` file. Silently skips any directory where
+/// reading is not permitted (permission errors). Returns the path of the first config file
+/// found, or `None` if none exists.
 pub fn find_default_config() -> Option<PathBuf> {
-    let cwd_candidate = PathBuf::from(".docsort.toml");
-    if cwd_candidate.exists() {
-        return Some(cwd_candidate);
+    let mut current = std::env::current_dir().ok()?;
+
+    loop {
+        let candidate = current.join(".docsort.toml");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+
+        // Try to move to parent directory. If we reach the root without finding a parent,
+        // stop searching.
+        let parent = current.parent();
+        match parent {
+            Some(p) if p != current => {
+                current = p.to_path_buf();
+            }
+            _ => {
+                // We've reached the root, or there's no parent (shouldn't happen on Unix).
+                break;
+            }
+        }
     }
 
-    let home_candidate = dirs_next_home().map(|h| h.join(".docsort.toml"))?;
-    if home_candidate.exists() {
-        Some(home_candidate)
-    } else {
-        None
-    }
-}
-
-/// Returns the current user's home directory using the `HOME` environment variable.
-fn dirs_next_home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    None
 }
 
 #[cfg(test)]

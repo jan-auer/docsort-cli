@@ -112,7 +112,7 @@ fn resolve_config_path(explicit: Option<PathBuf>) -> Result<PathBuf> {
         return Ok(path);
     }
     let Some(path) = config::find_default_config() else {
-        bail!("no config file found; create .docsort.toml in the current directory or home directory, or pass --config");
+        bail!("no .docsort.toml found; create one in the current directory or any parent directory, or pass --config");
     };
     Ok(path)
 }
