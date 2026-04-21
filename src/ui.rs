@@ -13,11 +13,16 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(area);
 
     let content_area = chunks[0];
-    let hint_area = chunks[1];
+    let separator_area = chunks[1];
+    let hint_area = chunks[2];
 
     match app.state {
         AppState::Browsing => render_browsing(frame, app, content_area),
@@ -26,6 +31,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         AppState::Naming => render_naming(frame, app, content_area),
     }
 
+    render_separator(frame, separator_area);
     render_hint_bar(frame, app, hint_area);
 }
 
@@ -64,7 +70,7 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
         let is_moved = app.moved.contains_key(&file.path);
 
         let prefix = if is_highlighted { "\u{25b6}" } else { " " };
-        let label_text = format!("[{}]", file.label);
+        let label_text = &file.label;
         let filename = &file.filename;
 
         let label_index = labels.iter().position(|l| *l == file.label).unwrap_or(0);
@@ -77,7 +83,8 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
             let dim = Style::default().fg(Color::DarkGray);
             let check = Span::styled("\u{2713} ", Style::default().fg(Color::Green));
             spans.push(Span::styled(prefix.to_string(), dim));
-            spans.push(Span::styled(format!("{label_text} "), dim));
+            spans.push(Span::styled(label_text.to_string(), dim));
+            spans.push(Span::raw(" "));
             spans.push(Span::styled(filename.to_string(), dim));
             spans.push(Span::raw("  "));
             spans.push(check);
@@ -87,15 +94,17 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
                 .bg(Color::DarkGray);
             let label_style = Style::default()
                 .add_modifier(Modifier::BOLD)
-                .fg(Color::Black)
+                .fg(Color::White)
                 .bg(bg);
             spans.push(Span::styled(prefix.to_string(), row_style));
-            spans.push(Span::styled(format!("{label_text} "), label_style));
+            spans.push(Span::styled(label_text.to_string(), label_style));
+            spans.push(Span::styled(" ".to_string(), row_style));
             spans.push(Span::styled(filename.to_string(), row_style));
         } else {
-            let label_style = Style::default().fg(Color::Black).bg(bg);
+            let label_style = Style::default().fg(Color::White).bg(bg);
             spans.push(Span::raw(prefix.to_string()));
-            spans.push(Span::styled(format!("{label_text} "), label_style));
+            spans.push(Span::styled(label_text.to_string(), label_style));
+            spans.push(Span::raw(" "));
             spans.push(Span::raw(filename.to_string()));
         };
 
@@ -265,6 +274,16 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
     ]));
 
     let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, area);
+}
+
+/// Renders a horizontal separator line filling the given area.
+fn render_separator(frame: &mut Frame, area: Rect) {
+    let line = "\u{2500}".repeat(area.width as usize);
+    let paragraph = Paragraph::new(Line::from(Span::styled(
+        line,
+        Style::default().fg(Color::DarkGray),
+    )));
     frame.render_widget(paragraph, area);
 }
 
