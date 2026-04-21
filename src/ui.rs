@@ -206,7 +206,7 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
     let dest_rel = app.selected_dest.as_deref().unwrap_or("");
     lines.push(Line::from(vec![
         Span::styled("\u{2192} ", Style::default().fg(Color::Cyan)),
-        Span::raw(dest_rel),
+        Span::styled(dest_rel, Style::default().add_modifier(Modifier::BOLD)),
     ]));
 
     // Existing files in the destination directory (alphabetical), excluding
@@ -230,9 +230,9 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
     let last_idx = visible_files.len().saturating_sub(1);
     for (i, name) in visible_files.iter().enumerate() {
         let tree_symbol = if i == last_idx {
-            "\u{2514}\u{2500} "
+            "  \u{2514}\u{2500} "
         } else {
-            "\u{251c}\u{2500} "
+            "  \u{251c}\u{2500} "
         };
         lines.push(Line::from(vec![
             Span::styled(tree_symbol, Style::default().fg(HINT_COLOR)),
