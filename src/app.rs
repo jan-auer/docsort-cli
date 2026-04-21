@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -203,6 +204,14 @@ impl App {
                 self.toggle_quick_look();
                 AppAction::Continue
             }
+            KeyCode::Char('o') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.open_highlighted_file();
+                AppAction::Continue
+            }
+            KeyCode::Char('r') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.reveal_highlighted_file_in_finder();
+                AppAction::Continue
+            }
             KeyCode::Char('o') => {
                 self.open_last_dest_in_finder();
                 AppAction::Continue
@@ -347,6 +356,37 @@ impl App {
             if let Some(parent) = dest.parent() {
                 let _ = std::process::Command::new("open").arg(parent).spawn();
             }
+        }
+    }
+
+    /// Opens the highlighted file with its default application.
+    ///
+    /// Uses the effective path (post-move destination if the file was moved this
+    /// session). The command is spawned in the background; errors are ignored.
+    fn open_highlighted_file(&mut self) {
+        if let Some(file) = self.files.get(self.cursor) {
+            let path = self.effective_path(&file.path);
+            let _ = std::process::Command::new("open")
+                .arg(&path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+        }
+    }
+
+    /// Reveals the highlighted file in Finder.
+    ///
+    /// Uses the effective path (post-move destination if the file was moved this
+    /// session). The command is spawned in the background; errors are ignored.
+    fn reveal_highlighted_file_in_finder(&mut self) {
+        if let Some(file) = self.files.get(self.cursor) {
+            let path = self.effective_path(&file.path);
+            let _ = std::process::Command::new("open")
+                .arg("-R")
+                .arg(&path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
         }
     }
 
@@ -1348,6 +1388,42 @@ mod tests {
         assert!(app.search_results.iter().any(|r| r.contains("beta")));
         // "alpha" should not appear unless it fuzzy-matches "beta".
         assert!(!app.search_results.iter().all(|r| r == "alpha"));
+    }
+
+    #[test]
+    fn browsing_ctrl_o_returns_continue() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('o')));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Browsing);
+    }
+
+    #[test]
+    fn browsing_ctrl_r_returns_continue() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('r')));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Browsing);
+    }
+
+    #[test]
+    fn browsing_ctrl_o_with_no_files_returns_continue() {
+        let mut app = make_app_with_files(vec![]);
+
+        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('o')));
+        assert_eq!(action, AppAction::Continue);
+    }
+
+    #[test]
+    fn browsing_ctrl_r_with_no_files_returns_continue() {
+        let mut app = make_app_with_files(vec![]);
+
+        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('r')));
+        assert_eq!(action, AppAction::Continue);
     }
 
     #[test]
