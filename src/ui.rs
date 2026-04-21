@@ -127,10 +127,19 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     let left_area = chunks[0];
     let right_area = chunks[1];
 
-    // Left pane: search results.
+    // Left pane: split vertically into results (top) and input (bottom).
     let left_block = Block::default().padding(Padding::new(0, 1, 0, 0));
     let left_inner = left_block.inner(left_area);
-    let visible_rows = left_inner.height.saturating_sub(1) as usize; // reserve 1 row for input
+
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(left_inner);
+
+    let results_area = left_chunks[0];
+    let input_area = left_chunks[1];
+
+    let visible_rows = results_area.height as usize;
     let (start, end) = visible_window(app.search_cursor, app.search_results.len(), visible_rows);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -146,6 +155,9 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(Span::styled(format!("{prefix}{result}"), style)));
     }
 
+    let results_paragraph = Paragraph::new(lines);
+    frame.render_widget(results_paragraph, results_area);
+
     // Input line at the bottom of the left pane.
     let input_spans = if app.search_query.is_empty() {
         vec![
@@ -159,10 +171,9 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
         ]
     };
-    lines.push(Line::from(input_spans));
 
-    let left_paragraph = Paragraph::new(lines);
-    frame.render_widget(left_paragraph, left_inner);
+    let input_paragraph = Paragraph::new(Line::from(input_spans));
+    frame.render_widget(input_paragraph, input_area);
 
     // Right pane: files in the highlighted destination.
     render_dest_files(frame, app, right_area);
@@ -178,10 +189,19 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
     let left_area = chunks[0];
     let right_area = chunks[1];
 
-    // Left pane: search results (frozen).
+    // Left pane: split vertically into results (top) and input (bottom).
     let left_block = Block::default().padding(Padding::new(0, 1, 0, 0));
     let left_inner = left_block.inner(left_area);
-    let visible_rows = left_inner.height.saturating_sub(1) as usize;
+
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(left_inner);
+
+    let results_area = left_chunks[0];
+    let input_area = left_chunks[1];
+
+    let visible_rows = results_area.height as usize;
     let (start, end) = visible_window(app.search_cursor, app.search_results.len(), visible_rows);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -197,7 +217,10 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::from(Span::styled(format!("{prefix}{result}"), style)));
     }
 
-    // Folder name input line.
+    let results_paragraph = Paragraph::new(lines);
+    frame.render_widget(results_paragraph, results_area);
+
+    // Folder name input line at the bottom.
     let folder_input_spans = if app.search_query.is_empty() {
         vec![
             Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
@@ -210,10 +233,9 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled("\u{2588}", Style::default().fg(Color::Magenta)),
         ]
     };
-    lines.push(Line::from(folder_input_spans));
 
-    let left_paragraph = Paragraph::new(lines);
-    frame.render_widget(left_paragraph, left_inner);
+    let input_paragraph = Paragraph::new(Line::from(folder_input_spans));
+    frame.render_widget(input_paragraph, input_area);
 
     render_dest_files(frame, app, right_area);
 }
