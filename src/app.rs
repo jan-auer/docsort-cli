@@ -393,7 +393,11 @@ impl App {
         self.search_cursor = 0;
     }
 
-    /// Creates the subfolder and transitions back to Searching.
+    /// Composes the subfolder path and transitions directly to Naming.
+    ///
+    /// The folder is not created on disk here; `move_file` calls
+    /// `fs::create_dir_all` on the destination, so it will be created
+    /// automatically when the move is confirmed.
     fn create_subfolder(&mut self) {
         let folder_name = self.search_query.trim().to_string();
         if folder_name.is_empty() {
@@ -408,29 +412,9 @@ impl App {
             return;
         };
 
-        let new_dir = self.dest_root.join(&parent).join(&folder_name);
-        if let Err(e) = file_ops::create_dir(&new_dir) {
-            self.error_message = Some(format!("Failed to create folder: {e}"));
-            self.state = AppState::Searching;
-            self.search_query.clear();
-            return;
-        }
-
-        if let Err(e) = self.dest_index.rebuild(&self.dest_root) {
-            self.error_message = Some(format!("Failed to rebuild index: {e}"));
-        }
-
-        // Point search cursor to the new folder.
-        let new_rel = format!("{parent}/{folder_name}");
+        self.selected_dest = Some(format!("{parent}/{folder_name}"));
         self.search_query.clear();
-        self.update_search_results();
-
-        // Try to find the new folder in results.
-        if let Some(pos) = self.search_results.iter().position(|r| *r == new_rel) {
-            self.search_cursor = pos;
-        }
-
-        self.state = AppState::Searching;
+        self.state = AppState::Naming;
     }
 
     /// Cancels subfolder creation and returns to Searching.
@@ -530,6 +514,11 @@ impl App {
                 self.dest_history.truncate(MAX_DEST_HISTORY);
 
                 self.selected_dest = None;
+
+                // Rebuild so any newly created subfolder appears in future searches.
+                if let Err(e) = self.dest_index.rebuild(&self.dest_root) {
+                    self.error_message = Some(format!("Failed to rebuild index: {e}"));
+                }
 
                 AppAction::CommitMove {
                     src: file.path.clone(),
@@ -1113,6 +1102,82 @@ mod tests {
 
         app.handle_event(make_key_event(KeyCode::Enter));
         assert_eq!(app.state, AppState::Searching);
+    }
+
+    #[test]
+    fn subfolder_creation_enter_with_name_transitions_to_naming_without_creating_dir() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::SubfolderCreation;
+        app.search_results = app.dest_index.query("");
+        app.search_cursor = 0;
+        // Capture the parent that cursor 0 points to before the event fires.
+        let parent = app.search_results[0].clone();
+        app.search_query = "sub".to_string();
+
+        let action = app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(action, AppAction::Continue);
+        // Must transition to Naming, not back to Searching.
+        assert_eq!(app.state, AppState::Naming);
+        // selected_dest must be the composed path.
+        let expected = format!("{parent}/sub");
+        assert_eq!(app.selected_dest, Some(expected.clone()));
+        // search_query must be cleared.
+        assert_eq!(app.search_query, "");
+        // The subfolder must NOT exist on disk yet.
+        assert!(!app.dest_root.join(&expected).exists());
+    }
+
+    #[test]
+    fn subfolder_creation_enter_rebuilds_dest_index_only_after_move() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        std::fs::create_dir(dir.path().join("alpha")).unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&src_path, b"content").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        // Enter SubfolderCreation with "alpha" as selected result.
+        app.state = AppState::SubfolderCreation;
+        app.search_results = vec!["alpha".to_string()];
+        app.search_cursor = 0;
+        app.search_query = "newsub".to_string();
+
+        app.handle_event(make_key_event(KeyCode::Enter));
+        // Now in Naming state.
+        assert_eq!(app.state, AppState::Naming);
+        assert_eq!(app.selected_dest, Some("alpha/newsub".to_string()));
+
+        // Confirm the move — this should create the directory and move the file.
+        let action = app.handle_event(make_key_event(KeyCode::Enter));
+        match action {
+            AppAction::CommitMove { dest, .. } => {
+                assert!(dest.exists(), "moved file should exist at dest");
+                assert!(
+                    dir.path().join("alpha/newsub").is_dir(),
+                    "newsub dir should be created"
+                );
+            }
+            other => panic!("expected CommitMove, got {other:?}"),
+        }
+        // After confirm_move, dest_index should include the new subfolder.
+        let results = app.dest_index.query("newsub");
+        assert!(
+            results.iter().any(|r| r.contains("newsub")),
+            "index should include newsub after move"
+        );
     }
 
     #[test]

@@ -30,7 +30,7 @@ pub fn move_file(src: &Path, dest_dir: &Path, new_name: &str) -> Result<PathBuf>
 /// Creates `path` and all missing intermediate directories.
 ///
 /// Succeeds silently if the directory already exists.
-pub fn create_dir(path: &Path) -> Result<()> {
+fn create_dir(path: &Path) -> Result<()> {
     std::fs::create_dir_all(path)
         .with_context(|| format!("failed to create directory: {}", path.display()))
 }
