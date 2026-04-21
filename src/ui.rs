@@ -355,15 +355,12 @@ fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line> = files
         .iter()
         .take(visible_rows)
-        .map(|name| Line::from(Span::styled(format!("\u{2502} {name}"), Style::default())))
+        .map(|name| Line::from(name.as_str()))
         .collect();
 
-    // Pad with separator-only lines so the │ character extends full height.
+    // Pad remaining rows with empty lines.
     while lines.len() < visible_rows {
-        lines.push(Line::from(Span::styled(
-            "\u{2502}",
-            Style::default().fg(HINT_COLOR),
-        )));
+        lines.push(Line::from(""));
     }
 
     let paragraph = Paragraph::new(lines);
