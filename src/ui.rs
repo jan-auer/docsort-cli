@@ -40,7 +40,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_hint_bar(frame, app, hint_area);
 }
 
-/// Palette of background colors for inbox labels. Cycled by inbox index.
+/// Palette of foreground colors for inbox labels. Cycled by inbox index.
 const LABEL_PALETTE: &[Color] = &[Color::Blue, Color::Green, Color::Magenta, Color::Cyan];
 
 /// Builds the ordered list of unique inbox labels from the file list, in
@@ -55,7 +55,7 @@ fn unique_labels(files: &[InboxFile]) -> Vec<String> {
     seen
 }
 
-/// Returns the background color for an inbox label by its position in the
+/// Returns the foreground color for an inbox label by its position in the
 /// unique-label list.
 fn label_color(label_index: usize) -> Color {
     LABEL_PALETTE[label_index % LABEL_PALETTE.len()]
@@ -67,6 +67,7 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
     let (start, end) = visible_window(app.cursor, app.files.len(), visible_rows);
 
     let labels = unique_labels(&app.files);
+    let max_label_len = labels.iter().map(|l| l.len()).max().unwrap_or(0);
 
     let mut lines: Vec<Line> = Vec::new();
     for i in start..end {
@@ -75,11 +76,15 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
         let is_moved = app.moved.contains_key(&file.path);
 
         let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
-        let label_text = &file.label;
         let filename = &file.filename;
 
         let label_index = labels.iter().position(|l| *l == file.label).unwrap_or(0);
-        let bg = label_color(label_index);
+        let fg = label_color(label_index);
+
+        // Pad the label to max_label_len so chevrons and filenames stay aligned.
+        let padded_label = format!("{:<width$}", file.label, width = max_label_len);
+        // Chevron with leading space and trailing space, rendered in the label colour.
+        let label_chevron = format!("{padded_label} \u{276f} ");
 
         let mut spans: Vec<Span> = Vec::new();
 
@@ -88,26 +93,20 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
             let dim = Style::default().fg(Color::DarkGray);
             let check = Span::styled("\u{2713} ", Style::default().fg(Color::Green));
             spans.push(Span::styled(prefix.to_string(), dim));
-            spans.push(Span::styled(label_text.to_string(), dim));
-            spans.push(Span::raw(" "));
+            spans.push(Span::styled(label_chevron, dim));
             spans.push(Span::styled(filename.to_string(), dim));
             spans.push(Span::raw("  "));
             spans.push(check);
         } else if is_highlighted {
             let row_style = Style::default().add_modifier(Modifier::BOLD);
-            let label_style = Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(Color::White)
-                .bg(bg);
+            let label_style = Style::default().add_modifier(Modifier::BOLD).fg(fg);
             spans.push(Span::styled(prefix.to_string(), row_style));
-            spans.push(Span::styled(label_text.to_string(), label_style));
-            spans.push(Span::styled(" ".to_string(), row_style));
+            spans.push(Span::styled(label_chevron, label_style));
             spans.push(Span::styled(filename.to_string(), row_style));
         } else {
-            let label_style = Style::default().fg(Color::White).bg(bg);
+            let label_style = Style::default().fg(fg);
             spans.push(Span::raw(prefix.to_string()));
-            spans.push(Span::styled(label_text.to_string(), label_style));
-            spans.push(Span::raw(" "));
+            spans.push(Span::styled(label_chevron, label_style));
             spans.push(Span::raw(filename.to_string()));
         };
 
