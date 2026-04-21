@@ -6,9 +6,9 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 argh = "0.1"
-crossterm = "0.28"
+crossterm = "0.29"
 nucleo-matcher = "0.3"
-ratatui = "0.29"
+ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 toml = "1"
 walkdir = "2"
