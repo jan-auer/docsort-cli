@@ -69,7 +69,14 @@ impl DestIndex {
                 format!("failed to read metadata for {}", entry.path().display())
             })?;
             if metadata.is_file() {
-                names.push(entry.file_name().to_string_lossy().into_owned());
+                let filename = entry.file_name().to_string_lossy().into_owned();
+                if filename.starts_with('.') {
+                    continue;
+                }
+                if filename.trim_end_matches('\r') == "Icon" {
+                    continue;
+                }
+                names.push(filename);
             }
         }
 
@@ -188,6 +195,32 @@ mod tests {
 
         let files = DestIndex::list_files(dir.path(), "sub").unwrap();
         assert_eq!(files, vec!["a.txt", "b.txt", "c.txt"]);
+    }
+
+    #[test]
+    fn list_files_excludes_hidden_files() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("visible.txt"), b"v").unwrap();
+        fs::write(sub.join(".hidden"), b"h").unwrap();
+        fs::write(sub.join(".DS_Store"), b"ds").unwrap();
+
+        let files = DestIndex::list_files(dir.path(), "sub").unwrap();
+        assert_eq!(files, vec!["visible.txt"]);
+    }
+
+    #[test]
+    fn list_files_excludes_macos_icon_file() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("visible.txt"), b"v").unwrap();
+        // macOS custom-icon file: "Icon" followed by carriage return
+        fs::write(sub.join("Icon\r"), b"").unwrap();
+
+        let files = DestIndex::list_files(dir.path(), "sub").unwrap();
+        assert_eq!(files, vec!["visible.txt"]);
     }
 
     #[test]
