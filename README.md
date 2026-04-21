@@ -5,7 +5,7 @@ A keyboard-driven TUI for filing documents from inbox folders into an organised 
 ## Install
 
 ```
-cargo install docsort
+cargo install --path .
 ```
 
 ## Config
