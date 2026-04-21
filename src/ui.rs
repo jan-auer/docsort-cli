@@ -235,7 +235,7 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
             "  \u{251c}\u{2500} "
         };
         lines.push(Line::from(vec![
-            Span::styled(tree_symbol, Style::default().fg(HINT_COLOR)),
+            Span::styled(tree_symbol, Style::default().fg(DECORATION_COLOR)),
             Span::raw(name.as_str()),
         ]));
     }
@@ -309,6 +309,8 @@ fn render_separator(frame: &mut Frame, area: Rect) {
 
 /// Muted mid-grey used for hint bar text and separators.
 const HINT_COLOR: Color = Color::Rgb(180, 180, 180);
+/// Dark grey used for decorative tree symbols, clearly subordinate to content.
+const DECORATION_COLOR: Color = Color::Rgb(90, 90, 90);
 
 /// Renders the hint bar at the bottom of the viewport.
 fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
