@@ -1,44 +1,116 @@
-use std::path::Path;
+use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
+use argh::FromArgs;
+use crossterm::event::{self, Event, KeyEvent};
+use ratatui::{DefaultTerminal, TerminalOptions, Viewport};
 
+mod app;
 mod config;
 mod dest;
 mod file_ops;
 mod inbox;
 mod quicklook;
+mod ui;
+
+use app::{App, AppAction, MAX_LIST_HEIGHT};
+
+/// A keyboard-driven TUI for sorting documents into an archive.
+#[derive(FromArgs, Debug)]
+struct Args {
+    /// path to the configuration file
+    #[argh(option, short = 'c')]
+    config: Option<PathBuf>,
+}
 
 fn main() -> Result<()> {
-    let Some(cfg_path) = config::find_default_config() else {
-        return Ok(());
-    };
+    let args: Args = argh::from_env();
 
-    let cfg = config::load_config(&cfg_path)?;
+    let config_path = resolve_config_path(args.config)?;
+    let cfg = config::load_config(&config_path)?;
 
     let files = inbox::scan_inboxes(&cfg)?;
-    let mut index = dest::DestIndex::new(&cfg.destination.root)?;
+    let dest_index = dest::DestIndex::new(&cfg.destination.root)?;
 
-    let _results = index.query("");
-    index.rebuild(&cfg.destination.root)?;
+    let mut app = App::new(files, dest_index, &cfg);
 
-    if let Some(first) = files.first() {
-        let _label = &first.label;
-        let dest_dir = cfg.destination.root.join("unsorted");
-        let _moved = file_ops::move_file(&first.path, &dest_dir, &first.filename);
+    run_event_loop(&mut app)
+}
+
+/// Resolves the configuration file path from the CLI option or default search.
+fn resolve_config_path(explicit: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(path) = explicit {
+        return Ok(path);
     }
+    let Some(path) = config::find_default_config() else {
+        bail!("no config file found; create .docsort.toml in the current directory or home directory, or pass --config");
+    };
+    Ok(path)
+}
 
-    file_ops::create_dir(Path::new("/tmp/docsort2-placeholder"))?;
+/// Initializes an inline terminal suitable for the TUI viewport.
+fn init_terminal() -> Result<DefaultTerminal> {
+    let terminal = ratatui::init_with_options(TerminalOptions {
+        viewport: Viewport::Inline(MAX_LIST_HEIGHT),
+    });
+    Ok(terminal)
+}
 
-    let dest_files = dest::DestIndex::list_files(&cfg.destination.root, "")?;
-    drop(dest_files);
+/// Runs the main TUI event loop with the commit-and-reinit pattern.
+fn run_event_loop(app: &mut App) -> Result<()> {
+    let mut terminal = init_terminal()?;
 
-    let mut ql = quicklook::QuickLook::new();
-    if let Some(first) = files.first() {
-        ql.toggle(&first.path);
-        ql.open(&first.path);
-        let _open = ql.is_open_for(&first.path);
-        ql.close();
+    loop {
+        terminal
+            .draw(|frame| ui::render(frame, app))
+            .context("failed to draw frame")?;
+
+        let key_event = read_key_event()?;
+        let Some(key) = key_event else {
+            continue;
+        };
+
+        let action = app.handle_event(key);
+        match action {
+            AppAction::Continue => {}
+            AppAction::CommitMove { src, dest, name } => {
+                // Tear down the terminal so the summary line enters the scroll buffer.
+                drop(terminal);
+                ratatui::restore();
+
+                let src_name = src
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| src.to_string_lossy().into_owned());
+                let dest_display = dest
+                    .parent()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| dest.to_string_lossy().into_owned());
+                println!("\u{2713} {src_name} \u{2192} {dest_display}/{name}");
+
+                // Reinitialize the terminal.
+                terminal = init_terminal()?;
+            }
+            AppAction::Quit => {
+                drop(terminal);
+                ratatui::restore();
+                return Ok(());
+            }
+        }
     }
+}
 
-    Ok(())
+/// Reads the next key event from crossterm, blocking until one arrives.
+///
+/// Returns `None` for non-key events (mouse, resize, focus, paste).
+fn read_key_event() -> Result<Option<KeyEvent>> {
+    let event = event::read().context("failed to read terminal event")?;
+    match event {
+        Event::Key(key) => Ok(Some(key)),
+        Event::FocusGained
+        | Event::FocusLost
+        | Event::Mouse(_)
+        | Event::Paste(_)
+        | Event::Resize(_, _) => Ok(None),
+    }
 }
