@@ -69,6 +69,11 @@ pub fn scan_inboxes(config: &Config) -> Result<Vec<InboxFile>> {
 
             let filename = entry.file_name().to_string_lossy().into_owned();
 
+            // Skip hidden files and directories
+            if filename.starts_with('.') {
+                continue;
+            }
+
             files.push(InboxFile {
                 label: label.clone(),
                 path: entry.path(),
@@ -178,5 +183,19 @@ mod tests {
         let config = make_config(vec![("MyLabel", dir.path().to_str().unwrap())], "/tmp/dest");
         let files = scan_inboxes(&config).unwrap();
         assert_eq!(files[0].label, "MyLabel");
+    }
+
+    #[test]
+    fn scan_inboxes_skips_hidden_files() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("visible.txt"), b"data").unwrap();
+        fs::write(dir.path().join(".hidden"), b"hidden").unwrap();
+        fs::write(dir.path().join(".DS_Store"), b"system").unwrap();
+
+        let config = make_config(vec![("Inbox", dir.path().to_str().unwrap())], "/tmp/dest");
+        let files = scan_inboxes(&config).expect("scan should succeed");
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].filename, "visible.txt");
     }
 }
