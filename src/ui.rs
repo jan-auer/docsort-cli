@@ -314,17 +314,26 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
     let available_rows = area.height.saturating_sub(3) as usize; // 1 for header, 2 for input
     let skip_count = dest_files.len().saturating_sub(available_rows);
     let visible_files = &dest_files[skip_count..];
-    let last_idx = visible_files.len().saturating_sub(1);
-    for (i, name) in visible_files.iter().enumerate() {
-        let tree_symbol = if i == last_idx {
-            "  \u{2514}\u{2500} "
-        } else {
-            "  \u{251c}\u{2500} "
-        };
-        lines.push(Line::from(vec![
-            Span::styled(tree_symbol, Style::default().fg(HINT_COLOR)),
-            Span::raw(name.as_str()),
-        ]));
+
+    if visible_files.is_empty() {
+        // Render placeholder when no files are present.
+        lines.push(Line::from(Span::styled(
+            "  \u{2514}\u{2500} (no files)",
+            Style::default().fg(HINT_COLOR),
+        )));
+    } else {
+        let last_idx = visible_files.len().saturating_sub(1);
+        for (i, name) in visible_files.iter().enumerate() {
+            let tree_symbol = if i == last_idx {
+                "  \u{2514}\u{2500} "
+            } else {
+                "  \u{251c}\u{2500} "
+            };
+            lines.push(Line::from(vec![
+                Span::styled(tree_symbol, Style::default().fg(HINT_COLOR)),
+                Span::raw(name.as_str()),
+            ]));
+        }
     }
 
     // Pad to push the two input lines to the bottom.
@@ -492,11 +501,18 @@ fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_default();
 
     let visible_rows = inner.height as usize;
-    let mut lines: Vec<Line> = files
-        .iter()
-        .take(visible_rows)
-        .map(|name| Line::from(name.as_str()))
-        .collect();
+    let mut lines: Vec<Line> = if files.is_empty() {
+        vec![Line::from(Span::styled(
+            "(no files)",
+            Style::default().fg(HINT_COLOR),
+        ))]
+    } else {
+        files
+            .iter()
+            .take(visible_rows)
+            .map(|name| Line::from(name.as_str()))
+            .collect()
+    };
 
     // Pad remaining rows with empty lines.
     while lines.len() < visible_rows {
