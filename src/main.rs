@@ -202,7 +202,9 @@ fn run_event_loop(app: &mut App) -> Result<()> {
             }
             AppAction::Quit => {
                 drop(terminal);
-                ratatui::restore();
+                crossterm::terminal::disable_raw_mode().context("failed to disable raw mode")?;
+                crossterm::execute!(std::io::stdout(), crossterm::cursor::Show)
+                    .context("failed to show cursor")?;
                 return Ok(());
             }
         }
