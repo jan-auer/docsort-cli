@@ -364,7 +364,7 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         match app.state {
             AppState::Browsing => Line::from(Span::styled(
-                "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  ^Space preview  ^C quit",
+                "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  ^Space preview  ^O open  ^R finder  ^C quit",
                 Style::default().fg(HINT_COLOR),
             )),
             AppState::ConfirmDelete => Line::from(Span::styled(
