@@ -101,6 +101,7 @@ impl DestIndex {
 }
 
 /// Walks `root` and collects all descendant subdirectories as relative path strings.
+/// Skips any directory whose name component starts with `.` (hidden directories).
 fn collect_subdirs(root: &Path) -> Result<Vec<String>> {
     let mut dirs: Vec<String> = Vec::new();
 
@@ -124,6 +125,15 @@ fn collect_subdirs(root: &Path) -> Result<Vec<String>> {
             })?
             .to_string_lossy()
             .into_owned();
+
+        // Skip if any path component starts with a dot (hidden directory).
+        let path = Path::new(&rel);
+        if path
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+        {
+            continue;
+        }
 
         dirs.push(rel);
     }
@@ -261,5 +271,32 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let result = DestIndex::list_files(dir.path(), "nonexistent");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn collect_subdirs_skips_hidden_directories() {
+        let dir = TempDir::new().unwrap();
+        // root/
+        //   visible/
+        //   .hidden/
+        //     nested/
+        //   alpha/
+        //     .dotdir/
+        fs::create_dir(dir.path().join("visible")).unwrap();
+        fs::create_dir(dir.path().join(".hidden")).unwrap();
+        fs::create_dir(dir.path().join(".hidden/nested")).unwrap();
+        fs::create_dir(dir.path().join("alpha")).unwrap();
+        fs::create_dir(dir.path().join("alpha/.dotdir")).unwrap();
+
+        let index = DestIndex::new(dir.path()).expect("index should build");
+
+        // Visible directories should appear
+        assert!(index.dirs.contains(&"visible".to_string()));
+        assert!(index.dirs.contains(&"alpha".to_string()));
+
+        // Hidden directories and their descendants should not appear
+        assert!(!index.dirs.contains(&".hidden".to_string()));
+        assert!(!index.dirs.contains(&".hidden/nested".to_string()));
+        assert!(!index.dirs.contains(&"alpha/.dotdir".to_string()));
     }
 }
