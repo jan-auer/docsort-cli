@@ -358,9 +358,12 @@ fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
         .map(|name| Line::from(Span::styled(format!("\u{2502} {name}"), Style::default())))
         .collect();
 
-    // Pad with blank lines so the widget spans the full allocated height.
+    // Pad with separator-only lines so the │ character extends full height.
     while lines.len() < visible_rows {
-        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "\u{2502}",
+            Style::default().fg(HINT_COLOR),
+        )));
     }
 
     let paragraph = Paragraph::new(lines);
