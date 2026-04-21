@@ -58,6 +58,9 @@ pub enum AppAction {
     Quit,
 }
 
+/// Maximum number of destination history entries kept in memory.
+const MAX_DEST_HISTORY: usize = 20;
+
 /// Core application state driving the TUI.
 #[derive(Debug)]
 pub struct App {
@@ -92,12 +95,13 @@ pub struct App {
     pub dest_root: PathBuf,
     /// The destination path chosen in Searching mode, carried into Naming.
     pub selected_dest: Option<String>,
+    /// In-session history of recently-used destination folders, most recent first.
+    pub dest_history: Vec<String>,
 }
 
 impl App {
     /// Creates a new `App` from scanned inbox files, a destination index, and config.
     pub fn new(files: Vec<InboxFile>, dest_index: DestIndex, config: &Config) -> Self {
-        let search_results = dest_index.query("");
         Self {
             files,
             cursor: 0,
@@ -106,7 +110,7 @@ impl App {
             quick_look: QuickLook::new(),
             state: AppState::Browsing,
             search_query: String::new(),
-            search_results,
+            search_results: Vec::new(),
             search_cursor: 0,
             name_input: String::new(),
             last_ctrl_c: None,
@@ -114,6 +118,7 @@ impl App {
             ctrl_c_hint: false,
             dest_root: config.destination.root.clone(),
             selected_dest: None,
+            dest_history: Vec::new(),
         }
     }
 
@@ -340,7 +345,11 @@ impl App {
         self.state = AppState::Searching;
         self.search_query.clear();
         self.search_cursor = 0;
-        self.update_search_results();
+        if self.dest_history.is_empty() {
+            self.search_results.clear();
+        } else {
+            self.search_results = self.dest_history.clone();
+        }
     }
 
     /// Transitions from Searching to Naming mode, recording the selected destination.
@@ -432,12 +441,12 @@ impl App {
         let Some(file) = self.files.get(self.cursor) else {
             return AppAction::Continue;
         };
-        let Some(ref dest_rel) = self.selected_dest else {
+        let Some(dest_rel) = self.selected_dest.clone() else {
             return AppAction::Continue;
         };
 
         let src = self.effective_path(&file.path);
-        let dest_dir = self.dest_root.join(dest_rel);
+        let dest_dir = self.dest_root.join(&dest_rel);
         let final_name = if self.name_input.trim().is_empty() {
             file.filename.clone()
         } else {
@@ -451,6 +460,12 @@ impl App {
                 self.state = AppState::Browsing;
                 self.name_input.clear();
                 self.search_query.clear();
+
+                // Record destination in session history, most-recent first.
+                self.dest_history.retain(|entry| *entry != dest_rel);
+                self.dest_history.insert(0, dest_rel);
+                self.dest_history.truncate(MAX_DEST_HISTORY);
+
                 self.selected_dest = None;
 
                 AppAction::CommitMove {
@@ -477,13 +492,21 @@ impl App {
     }
 
     /// Updates fuzzy search results from the current query.
+    ///
+    /// When the query is empty, shows `dest_history` (most-recent first).
+    /// When the query is non-empty, runs a fuzzy search across all folders.
     fn update_search_results(&mut self) {
-        self.search_results = self.dest_index.query(&self.search_query);
-        // Clamp search cursor to valid range.
-        if self.search_results.is_empty() {
+        if self.search_query.is_empty() {
+            self.search_results = self.dest_history.clone();
             self.search_cursor = 0;
-        } else if self.search_cursor >= self.search_results.len() {
-            self.search_cursor = self.search_results.len() - 1;
+        } else {
+            self.search_results = self.dest_index.query(&self.search_query);
+            // Clamp search cursor to valid range.
+            if self.search_results.is_empty() {
+                self.search_cursor = 0;
+            } else if self.search_cursor >= self.search_results.len() {
+                self.search_cursor = self.search_results.len() - 1;
+            }
         }
     }
 
@@ -718,8 +741,8 @@ mod tests {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
         app.state = AppState::Searching;
-        // Ensure there are search results.
-        app.update_search_results();
+        // Ensure there are search results by seeding history.
+        app.search_results = app.dest_index.query("alpha");
         assert!(!app.search_results.is_empty());
 
         let action = app.handle_event(make_key_event(KeyCode::Enter));
@@ -733,7 +756,7 @@ mod tests {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
         app.state = AppState::Searching;
-        app.update_search_results();
+        app.search_results = app.dest_index.query("");
 
         let action = app.handle_event(make_key_event(KeyCode::Tab));
         assert_eq!(action, AppAction::Continue);
@@ -965,7 +988,8 @@ mod tests {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
         app.state = AppState::Searching;
-        app.update_search_results();
+        // Populate results directly from the index (bypasses history logic).
+        app.search_results = app.dest_index.query("");
 
         // Should have at least 2 results (alpha, beta from make_app_with_files).
         assert!(app.search_results.len() >= 2);
@@ -1016,7 +1040,7 @@ mod tests {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
-        app.update_search_results();
+        app.search_results = app.dest_index.query("");
         app.search_query.clear();
 
         app.handle_event(make_key_event(KeyCode::Enter));
@@ -1058,5 +1082,146 @@ mod tests {
         let mut app = make_app_with_files(files);
         app.state = AppState::Naming;
         assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
+    }
+
+    #[test]
+    fn commit_move_prepends_to_dest_history() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&src_path, b"content").unwrap();
+        std::fs::create_dir(dir.path().join("dest")).unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.dest_history, vec!["dest".to_string()]);
+    }
+
+    #[test]
+    fn commit_move_deduplicates_dest_history() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path1 = src_dir.path().join("a.pdf");
+        let src_path2 = src_dir.path().join("b.pdf");
+        std::fs::write(&src_path1, b"aaa").unwrap();
+        std::fs::write(&src_path2, b"bbb").unwrap();
+        std::fs::create_dir(dir.path().join("dest")).unwrap();
+
+        let files = vec![
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: src_path1.clone(),
+                filename: "a.pdf".to_string(),
+                modified: SystemTime::now(),
+            },
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: src_path2.clone(),
+                filename: "b.pdf".to_string(),
+                modified: SystemTime::now(),
+            },
+        ];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        // Move first file to "dest".
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.dest_history.len(), 1);
+
+        // Simulate moving second file to "dest" again.
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+        // Need a second file at cursor=0 still there; files list still has entry at index 0.
+        // The first file was moved but still in the list; just re-use cursor at the second entry.
+        app.cursor = 1;
+        app.handle_event(make_key_event(KeyCode::Enter));
+
+        // "dest" must appear only once, at the front.
+        assert_eq!(app.dest_history, vec!["dest".to_string()]);
+    }
+
+    #[test]
+    fn enter_searching_with_history_populates_results() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.dest_history = vec!["alpha".to_string(), "beta".to_string()];
+
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.state, AppState::Searching);
+        assert_eq!(app.search_results, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn enter_searching_without_history_leaves_results_empty() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.state, AppState::Searching);
+        assert!(app.search_results.is_empty());
+    }
+
+    #[test]
+    fn update_search_results_empty_query_uses_history() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.dest_history = vec!["alpha".to_string()];
+
+        app.update_search_results();
+        assert_eq!(app.search_results, vec!["alpha"]);
+        assert_eq!(app.search_cursor, 0);
+    }
+
+    #[test]
+    fn update_search_results_nonempty_query_uses_fuzzy_index() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.dest_history = vec!["alpha".to_string()];
+        app.search_query = "beta".to_string();
+
+        app.update_search_results();
+        // Fuzzy search for "beta" should find "beta", not history.
+        assert!(app.search_results.iter().any(|r| r.contains("beta")));
+        // "alpha" should not appear unless it fuzzy-matches "beta".
+        assert!(!app.search_results.iter().all(|r| r == "alpha"));
+    }
+
+    #[test]
+    fn dest_history_capped_at_max() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        // Pre-fill history to the limit.
+        app.dest_history = (0..MAX_DEST_HISTORY)
+            .map(|i| format!("folder{i}"))
+            .collect();
+
+        // Directly invoke history update logic as confirm_move would.
+        let new_dest = "extra_folder".to_string();
+        app.dest_history.retain(|entry| *entry != new_dest);
+        app.dest_history.insert(0, new_dest.clone());
+        app.dest_history.truncate(MAX_DEST_HISTORY);
+
+        assert_eq!(app.dest_history.len(), MAX_DEST_HISTORY);
+        assert_eq!(app.dest_history[0], new_dest);
     }
 }
