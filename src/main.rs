@@ -174,7 +174,8 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 if desired != current_height {
                     clear_viewport(current_height)?;
                     drop(terminal);
-                    ratatui::restore();
+                    crossterm::terminal::disable_raw_mode()
+                        .context("failed to disable raw mode")?;
                     current_height = desired;
                     terminal = init_terminal(current_height)?;
                 }
@@ -184,7 +185,7 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 // the summary line is printed on a clean line in the scroll buffer.
                 clear_viewport(current_height)?;
                 drop(terminal);
-                ratatui::restore();
+                crossterm::terminal::disable_raw_mode().context("failed to disable raw mode")?;
 
                 let src_name = src
                     .file_name()
