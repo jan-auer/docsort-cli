@@ -960,7 +960,7 @@ mod tests {
         }
     }
 
-    fn make_app_with_files(files: Vec<InboxFile>) -> App {
+    fn make_app_with_files(files: Vec<InboxFile>) -> (App, tempfile::TempDir) {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::create_dir(dir.path().join("alpha")).unwrap();
         std::fs::create_dir(dir.path().join("beta")).unwrap();
@@ -968,16 +968,13 @@ mod tests {
         let config = make_config(dir.path().to_str().unwrap());
         let index = DestIndex::new(dir.path()).unwrap();
         let app = App::new(files, index, &config);
-        // Keep the temp dir alive by leaking it (the dir is used
-        // only for the DestIndex, which has already consumed it).
-        let _ = dir.keep();
-        app
+        (app, dir)
     }
 
     #[test]
     fn initial_state_is_browsing() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let app = make_app_with_files(files);
+        let (app, _dir) = make_app_with_files(files);
         assert_eq!(app.state, AppState::Browsing);
         assert_eq!(app.cursor, 0);
     }
@@ -985,7 +982,7 @@ mod tests {
     #[test]
     fn browsing_enter_transitions_to_searching() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let action = app.handle_event(make_key_event(KeyCode::Enter));
         assert_eq!(action, AppAction::Continue);
@@ -994,7 +991,7 @@ mod tests {
 
     #[test]
     fn browsing_enter_with_no_files_stays_browsing() {
-        let mut app = make_app_with_files(vec![]);
+        let (mut app, _dir) = make_app_with_files(vec![]);
 
         let action = app.handle_event(make_key_event(KeyCode::Enter));
         assert_eq!(action, AppAction::Continue);
@@ -1007,7 +1004,7 @@ mod tests {
             make_inbox_file("A", "a.pdf", "/tmp/a.pdf"),
             make_inbox_file("B", "b.pdf", "/tmp/b.pdf"),
         ];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         assert_eq!(app.cursor, 0);
 
         app.handle_event(make_key_event(KeyCode::Down));
@@ -1017,7 +1014,7 @@ mod tests {
     #[test]
     fn browsing_cursor_up_at_zero_stays() {
         let files = vec![make_inbox_file("A", "a.pdf", "/tmp/a.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         assert_eq!(app.cursor, 0);
 
         app.handle_event(make_key_event(KeyCode::Up));
@@ -1027,7 +1024,7 @@ mod tests {
     #[test]
     fn browsing_cursor_down_at_end_stays() {
         let files = vec![make_inbox_file("A", "a.pdf", "/tmp/a.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         assert_eq!(app.cursor, 0);
 
         app.handle_event(make_key_event(KeyCode::Down));
@@ -1037,7 +1034,7 @@ mod tests {
     #[test]
     fn searching_esc_returns_to_browsing() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
 
         let action = app.handle_event(make_key_event(KeyCode::Esc));
@@ -1048,7 +1045,7 @@ mod tests {
     #[test]
     fn searching_typing_updates_query() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
 
         app.handle_event(make_key_event(KeyCode::Char('a')));
@@ -1061,7 +1058,7 @@ mod tests {
     #[test]
     fn searching_backspace_removes_char() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_query = "abc".to_string();
         app.search_input_pos = 3;
@@ -1074,7 +1071,7 @@ mod tests {
     #[test]
     fn searching_enter_transitions_to_naming() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         // Ensure there are search results by seeding history.
         app.search_results = app.dest_index.query("alpha");
@@ -1089,7 +1086,7 @@ mod tests {
     #[test]
     fn searching_tab_transitions_to_subfolder_creation() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_results = app.dest_index.query("");
 
@@ -1101,7 +1098,7 @@ mod tests {
     #[test]
     fn subfolder_creation_esc_returns_to_searching() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
 
         let action = app.handle_event(make_key_event(KeyCode::Esc));
@@ -1112,7 +1109,7 @@ mod tests {
     #[test]
     fn naming_esc_with_empty_input_returns_to_searching() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
 
         let action = app.handle_event(make_key_event(KeyCode::Esc));
@@ -1123,7 +1120,7 @@ mod tests {
     #[test]
     fn naming_esc_with_nonempty_input_clears_and_stays_in_naming() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "some text".to_string();
 
@@ -1136,7 +1133,7 @@ mod tests {
     #[test]
     fn naming_esc_twice_clears_then_returns_to_searching() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "some text".to_string();
 
@@ -1151,7 +1148,7 @@ mod tests {
     #[test]
     fn naming_typing_updates_name_input() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
 
         app.handle_event(make_key_event(KeyCode::Char('n')));
@@ -1163,7 +1160,7 @@ mod tests {
     #[test]
     fn double_ctrl_c_quits() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('c')));
         assert_eq!(action, AppAction::Continue);
@@ -1176,7 +1173,7 @@ mod tests {
     #[test]
     fn single_ctrl_c_then_other_key_resets() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         app.handle_event(make_ctrl_key_event(KeyCode::Char('c')));
         assert!(app.last_ctrl_c.is_some());
@@ -1189,7 +1186,7 @@ mod tests {
     #[test]
     fn release_events_are_ignored() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let release_event = KeyEvent {
             code: KeyCode::Enter,
@@ -1300,7 +1297,7 @@ mod tests {
     #[test]
     fn effective_path_resolves_moved_files() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let original = PathBuf::from("/tmp/doc.pdf");
         let new_dest = PathBuf::from("/archive/Finance/doc.pdf");
@@ -1312,7 +1309,7 @@ mod tests {
     #[test]
     fn effective_path_returns_original_if_not_moved() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let app = make_app_with_files(files);
+        let (app, _dir) = make_app_with_files(files);
 
         let original = PathBuf::from("/tmp/doc.pdf");
         assert_eq!(app.effective_path(&original), original);
@@ -1321,7 +1318,7 @@ mod tests {
     #[test]
     fn search_cursor_navigation() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         // Populate results directly from the index (bypasses history logic).
         app.search_results = app.dest_index.query("");
@@ -1344,7 +1341,7 @@ mod tests {
     #[test]
     fn build_final_name_with_extension() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let app = make_app_with_files(files);
+        let (app, _dir) = make_app_with_files(files);
 
         // Temporarily set name_input via a mutable reference workaround.
         let mut app = app;
@@ -1355,7 +1352,7 @@ mod tests {
     #[test]
     fn build_final_name_without_extension() {
         let files = vec![make_inbox_file("Inbox", "readme", "/tmp/readme")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.name_input = "new_name".to_string();
         assert_eq!(app.build_final_name("readme"), "new_name");
     }
@@ -1363,7 +1360,7 @@ mod tests {
     #[test]
     fn error_message_cleared_on_next_key() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.error_message = Some("some error".to_string());
 
         app.handle_event(make_key_event(KeyCode::Down));
@@ -1373,7 +1370,7 @@ mod tests {
     #[test]
     fn subfolder_creation_enter_with_empty_name_returns_to_searching() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
         app.search_results = app.dest_index.query("");
         app.search_query.clear();
@@ -1385,7 +1382,7 @@ mod tests {
     #[test]
     fn subfolder_creation_enter_with_name_transitions_to_naming_without_creating_dir() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
         app.search_results = app.dest_index.query("");
         app.search_cursor = 0;
@@ -1466,7 +1463,7 @@ mod tests {
             make_inbox_file("B", "b.pdf", "/tmp/b.pdf"),
             make_inbox_file("C", "c.pdf", "/tmp/c.pdf"),
         ];
-        let app = make_app_with_files(files);
+        let (app, _dir) = make_app_with_files(files);
         assert_eq!(app.state, AppState::Browsing);
         assert_eq!(app.desired_viewport_height(), viewport_height(3));
     }
@@ -1474,7 +1471,7 @@ mod tests {
     #[test]
     fn desired_viewport_height_searching_uses_max() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
     }
@@ -1482,7 +1479,7 @@ mod tests {
     #[test]
     fn desired_viewport_height_subfolder_creation_uses_max() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
         assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
     }
@@ -1490,7 +1487,7 @@ mod tests {
     #[test]
     fn desired_viewport_height_naming_uses_max() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
     }
@@ -1573,7 +1570,7 @@ mod tests {
     #[test]
     fn enter_searching_with_history_populates_results() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.dest_history = vec!["alpha".to_string(), "beta".to_string()];
 
         app.handle_event(make_key_event(KeyCode::Enter));
@@ -1584,7 +1581,7 @@ mod tests {
     #[test]
     fn enter_searching_without_history_shows_top_level_dirs() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         app.handle_event(make_key_event(KeyCode::Enter));
         assert_eq!(app.state, AppState::Searching);
@@ -1595,7 +1592,7 @@ mod tests {
     #[test]
     fn update_search_results_empty_query_empty_history_uses_top_level_dirs() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         // dest_history is empty by default; make_app_with_files creates "alpha" and "beta".
 
         app.update_search_results();
@@ -1606,7 +1603,7 @@ mod tests {
     #[test]
     fn update_search_results_empty_query_uses_history() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.dest_history = vec!["alpha".to_string()];
 
         app.update_search_results();
@@ -1617,7 +1614,7 @@ mod tests {
     #[test]
     fn update_search_results_nonempty_query_uses_fuzzy_index() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.dest_history = vec!["alpha".to_string()];
         app.search_query = "beta".to_string();
 
@@ -1631,7 +1628,7 @@ mod tests {
     #[test]
     fn browsing_o_returns_continue() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let action = app.handle_event(make_key_event(KeyCode::Char('o')));
         assert_eq!(action, AppAction::Continue);
@@ -1641,7 +1638,7 @@ mod tests {
     #[test]
     fn browsing_r_returns_continue() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let action = app.handle_event(make_key_event(KeyCode::Char('r')));
         assert_eq!(action, AppAction::Continue);
@@ -1650,7 +1647,7 @@ mod tests {
 
     #[test]
     fn browsing_o_with_no_files_returns_continue() {
-        let mut app = make_app_with_files(vec![]);
+        let (mut app, _dir) = make_app_with_files(vec![]);
 
         let action = app.handle_event(make_key_event(KeyCode::Char('o')));
         assert_eq!(action, AppAction::Continue);
@@ -1658,7 +1655,7 @@ mod tests {
 
     #[test]
     fn browsing_r_with_no_files_returns_continue() {
-        let mut app = make_app_with_files(vec![]);
+        let (mut app, _dir) = make_app_with_files(vec![]);
 
         let action = app.handle_event(make_key_event(KeyCode::Char('r')));
         assert_eq!(action, AppAction::Continue);
@@ -1667,7 +1664,7 @@ mod tests {
     #[test]
     fn delete_on_unmoved_file_enters_confirm_delete() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let action = app.handle_event(make_key_event(KeyCode::Char('d')));
         assert_eq!(action, AppAction::Continue);
@@ -1677,7 +1674,7 @@ mod tests {
     #[test]
     fn delete_on_moved_file_stays_browsing() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         // Mark the file as moved.
         app.moved.insert(
@@ -1694,14 +1691,14 @@ mod tests {
     #[test]
     fn current_file_is_moved_returns_false_for_unmoved_file() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let app = make_app_with_files(files);
+        let (app, _dir) = make_app_with_files(files);
         assert!(!app.current_file_is_moved());
     }
 
     #[test]
     fn current_file_is_moved_returns_true_for_moved_file() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.moved.insert(
             PathBuf::from("/tmp/doc.pdf"),
             PathBuf::from("/archive/doc.pdf"),
@@ -1745,7 +1742,7 @@ mod tests {
     #[test]
     fn undo_move_on_unmoved_file_does_nothing() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         let action = app.handle_event(make_key_event(KeyCode::Char('u')));
         assert_eq!(action, AppAction::Continue);
@@ -1949,7 +1946,7 @@ mod tests {
     #[test]
     fn dest_history_capped_at_max() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
 
         // Pre-fill history to the limit.
         app.dest_history = (0..MAX_DEST_HISTORY)
@@ -1969,7 +1966,7 @@ mod tests {
     #[test]
     fn searching_left_right_moves_cursor() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_query = "abc".to_string();
         app.search_input_pos = 3;
@@ -1999,7 +1996,7 @@ mod tests {
     #[test]
     fn searching_insert_at_cursor_position() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_query = "ac".to_string();
         app.search_input_pos = 1;
@@ -2012,7 +2009,7 @@ mod tests {
     #[test]
     fn searching_backspace_at_middle_removes_left_char() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_query = "abc".to_string();
         app.search_input_pos = 2;
@@ -2025,7 +2022,7 @@ mod tests {
     #[test]
     fn searching_backspace_at_zero_does_nothing() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_query = "abc".to_string();
         app.search_input_pos = 0;
@@ -2038,7 +2035,7 @@ mod tests {
     #[test]
     fn naming_left_right_moves_cursor() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "hi".to_string();
         app.name_input_pos = 2;
@@ -2063,7 +2060,7 @@ mod tests {
     #[test]
     fn naming_insert_at_cursor_position() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "ac".to_string();
         app.name_input_pos = 1;
@@ -2076,7 +2073,7 @@ mod tests {
     #[test]
     fn naming_backspace_at_middle_removes_left_char() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "abc".to_string();
         app.name_input_pos = 2;
@@ -2089,7 +2086,7 @@ mod tests {
     #[test]
     fn naming_backspace_at_zero_does_nothing() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "abc".to_string();
         app.name_input_pos = 0;
@@ -2102,7 +2099,7 @@ mod tests {
     #[test]
     fn naming_esc_clears_input_and_resets_cursor() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::Naming;
         app.name_input = "hello".to_string();
         app.name_input_pos = 3;
@@ -2117,7 +2114,7 @@ mod tests {
     fn subfolder_creation_ctrl_space_toggles_quick_look() {
         let file_path = PathBuf::from("/tmp/doc.pdf");
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
 
         // Quick Look is initially closed for this file.
@@ -2136,7 +2133,7 @@ mod tests {
     #[test]
     fn subfolder_creation_insert_and_cursor() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
+        let (mut app, _dir) = make_app_with_files(files);
         app.state = AppState::SubfolderCreation;
         app.search_query = "ac".to_string();
         app.search_input_pos = 1;
