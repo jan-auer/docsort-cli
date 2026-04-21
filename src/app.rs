@@ -336,6 +336,10 @@ impl App {
                 self.cancel_subfolder_creation();
                 AppAction::Continue
             }
+            KeyCode::Char(' ') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.toggle_quick_look();
+                AppAction::Continue
+            }
             KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.search_query.clear();
                 self.search_input_pos = 0;
@@ -2107,6 +2111,26 @@ mod tests {
         assert_eq!(app.name_input, "");
         assert_eq!(app.name_input_pos, 0);
         assert_eq!(app.state, AppState::Naming);
+    }
+
+    #[test]
+    fn subfolder_creation_ctrl_space_toggles_quick_look() {
+        let file_path = PathBuf::from("/tmp/doc.pdf");
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::SubfolderCreation;
+
+        // Quick Look is initially closed for this file.
+        assert!(!app.quick_look.is_open_for(&file_path));
+
+        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char(' ')));
+        assert_eq!(action, AppAction::Continue);
+        // After toggle, Quick Look should be open for the highlighted file.
+        assert!(app.quick_look.is_open_for(&file_path));
+
+        // Second toggle closes it.
+        app.handle_event(make_ctrl_key_event(KeyCode::Char(' ')));
+        assert!(!app.quick_look.is_open_for(&file_path));
     }
 
     #[test]

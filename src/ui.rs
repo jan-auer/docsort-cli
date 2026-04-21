@@ -478,7 +478,7 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(HINT_COLOR),
             )),
             AppState::SubfolderCreation => Line::from(Span::styled(
-                "\u{21b5} create  Esc cancel",
+                "\u{21b5} create  Esc cancel  ^Spc preview",
                 Style::default().fg(HINT_COLOR),
             )),
             AppState::Naming => Line::from(Span::styled(
