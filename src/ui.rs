@@ -6,6 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{App, AppState};
 use crate::dest::DestIndex;
+use crate::inbox::InboxFile;
 
 /// Renders the entire TUI frame based on the current application state.
 pub fn render(frame: &mut Frame, app: &App) {
@@ -29,7 +30,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_separator(frame, top_separator_area);
 
     match app.state {
-        AppState::Browsing => render_browsing(frame, app, content_area),
+        AppState::Browsing | AppState::ConfirmDelete => render_browsing(frame, app, content_area),
         AppState::Searching => render_searching(frame, app, content_area),
         AppState::SubfolderCreation => render_subfolder_creation(frame, app, content_area),
         AppState::Naming => render_naming(frame, app, content_area),
@@ -44,7 +45,7 @@ const LABEL_PALETTE: &[Color] = &[Color::Blue, Color::Green, Color::Magenta, Col
 
 /// Builds the ordered list of unique inbox labels from the file list, in
 /// first-appearance order.
-fn unique_labels(files: &[crate::inbox::InboxFile]) -> Vec<String> {
+fn unique_labels(files: &[InboxFile]) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     for file in files {
         if !seen.contains(&file.label) {
@@ -364,18 +365,28 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
         };
         Line::from(Span::styled(err.as_str(), Style::default().fg(color)))
     } else {
-        let hints = match app.state {
-            AppState::Browsing => {
-                "\u{2191}\u{2193} navigate  \u{21b5} file  ^Space preview  ^C quit"
-            }
-            AppState::Searching => "\u{21b5} confirm  Tab new folder  Esc cancel  ^Spc preview",
-            AppState::SubfolderCreation => "\u{21b5} create  Esc cancel",
-            AppState::Naming => "\u{21b5} confirm (empty=keep)  Esc clear/back",
-        };
-        Line::from(Span::styled(
-            hints.to_string(),
-            Style::default().fg(HINT_COLOR),
-        ))
+        match app.state {
+            AppState::Browsing => Line::from(Span::styled(
+                "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  ^Space preview  ^C quit",
+                Style::default().fg(HINT_COLOR),
+            )),
+            AppState::ConfirmDelete => Line::from(Span::styled(
+                "delete? [y/N]",
+                Style::default().fg(Color::Red),
+            )),
+            AppState::Searching => Line::from(Span::styled(
+                "\u{21b5} confirm  Tab new folder  Esc cancel  ^Spc preview",
+                Style::default().fg(HINT_COLOR),
+            )),
+            AppState::SubfolderCreation => Line::from(Span::styled(
+                "\u{21b5} create  Esc cancel",
+                Style::default().fg(HINT_COLOR),
+            )),
+            AppState::Naming => Line::from(Span::styled(
+                "\u{21b5} confirm (empty=keep)  Esc clear/back",
+                Style::default().fg(HINT_COLOR),
+            )),
+        }
     };
 
     let paragraph = Paragraph::new(line);

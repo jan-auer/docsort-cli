@@ -37,6 +37,8 @@ pub enum AppState {
     SubfolderCreation,
     /// Entering a new filename for the file being filed.
     Naming,
+    /// Waiting for the user to confirm deletion of the highlighted file.
+    ConfirmDelete,
 }
 
 /// Actions returned by `App::handle_event` to communicate with the event loop.
@@ -53,6 +55,12 @@ pub enum AppAction {
         dest: PathBuf,
         /// Filename used at the destination.
         name: String,
+    },
+    /// A file was deleted from disk; the event loop must tear down and
+    /// reinitialize the terminal to flush a summary line.
+    DeleteFile {
+        /// Path of the deleted file.
+        path: PathBuf,
     },
     /// The user requested to quit the application.
     Quit,
@@ -159,6 +167,7 @@ impl App {
             AppState::Searching => self.handle_searching(event),
             AppState::SubfolderCreation => self.handle_subfolder_creation(event),
             AppState::Naming => self.handle_naming(event),
+            AppState::ConfirmDelete => self.handle_confirm_delete(event),
         }
     }
 
@@ -196,6 +205,10 @@ impl App {
             }
             KeyCode::Char('o') => {
                 self.open_last_dest_in_finder();
+                AppAction::Continue
+            }
+            KeyCode::Char('d') => {
+                self.enter_confirm_delete();
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -427,6 +440,56 @@ impl App {
         self.update_search_results();
     }
 
+    /// Transitions from Browsing to ConfirmDelete mode for the highlighted file.
+    fn enter_confirm_delete(&mut self) {
+        if self.files.is_empty() {
+            return;
+        }
+        self.state = AppState::ConfirmDelete;
+    }
+
+    /// Handles key events in ConfirmDelete mode.
+    fn handle_confirm_delete(&mut self, event: KeyEvent) -> AppAction {
+        match event.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => self.confirm_delete(),
+            _ => {
+                self.state = AppState::Browsing;
+                AppAction::Continue
+            }
+        }
+    }
+
+    /// Deletes the highlighted file from disk and from the file list.
+    fn confirm_delete(&mut self) -> AppAction {
+        let Some(file) = self.files.get(self.cursor) else {
+            self.state = AppState::Browsing;
+            return AppAction::Continue;
+        };
+
+        let path = self.effective_path(&file.path);
+        let original_path = file.path.clone();
+
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                self.quick_look.close();
+                self.files.remove(self.cursor);
+                // Clamp cursor so it remains in bounds.
+                if self.cursor > 0 && self.cursor >= self.files.len() {
+                    self.cursor = self.files.len().saturating_sub(1);
+                }
+                self.state = AppState::Browsing;
+                AppAction::DeleteFile {
+                    path: original_path,
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Delete failed: {e}"));
+                self.state = AppState::Browsing;
+                AppAction::Continue
+            }
+        }
+    }
+
     /// Cancels Naming and returns to Searching.
     fn cancel_naming(&mut self) {
         self.state = AppState::Searching;
@@ -540,12 +603,13 @@ impl App {
 
     /// Returns the desired inline viewport height for the current state.
     ///
-    /// In `Browsing` mode the viewport is sized to the file list. In all other
-    /// modes (`Searching`, `SubfolderCreation`, `Naming`) the result list may
-    /// be arbitrarily long, so the full `MAX_LIST_HEIGHT` is used.
+    /// In `Browsing` and `ConfirmDelete` modes the viewport is sized to the
+    /// file list. In all other modes (`Searching`, `SubfolderCreation`,
+    /// `Naming`) the result list may be arbitrarily long, so the full
+    /// `MAX_LIST_HEIGHT` is used.
     pub fn desired_viewport_height(&self) -> u16 {
         match self.state {
-            AppState::Browsing => viewport_height(self.files.len()),
+            AppState::Browsing | AppState::ConfirmDelete => viewport_height(self.files.len()),
             AppState::Searching | AppState::SubfolderCreation | AppState::Naming => MAX_LIST_HEIGHT,
         }
     }

@@ -189,6 +189,20 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 current_height = app.desired_viewport_height();
                 terminal = init_terminal(current_height)?;
             }
+            AppAction::DeleteFile { path } => {
+                let filename = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                terminal
+                    .clear()
+                    .context("failed to clear inline viewport")?;
+                drop(terminal);
+                crossterm::terminal::disable_raw_mode().context("failed to disable raw mode")?;
+                println!("\u{2717} {filename} deleted");
+                current_height = app.desired_viewport_height();
+                terminal = init_terminal(current_height)?;
+            }
             AppAction::Quit => {
                 terminal
                     .clear()
