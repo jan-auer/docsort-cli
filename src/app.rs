@@ -216,11 +216,11 @@ impl App {
                 self.toggle_quick_look();
                 AppAction::Continue
             }
-            KeyCode::Char('o') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('o') => {
                 self.open_highlighted_file();
                 AppAction::Continue
             }
-            KeyCode::Char('r') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('r') => {
                 self.reveal_highlighted_file_in_finder();
                 AppAction::Continue
             }
@@ -1625,38 +1625,38 @@ mod tests {
     }
 
     #[test]
-    fn browsing_ctrl_o_returns_continue() {
+    fn browsing_o_returns_continue() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
 
-        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('o')));
+        let action = app.handle_event(make_key_event(KeyCode::Char('o')));
         assert_eq!(action, AppAction::Continue);
         assert_eq!(app.state, AppState::Browsing);
     }
 
     #[test]
-    fn browsing_ctrl_r_returns_continue() {
+    fn browsing_r_returns_continue() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
 
-        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('r')));
+        let action = app.handle_event(make_key_event(KeyCode::Char('r')));
         assert_eq!(action, AppAction::Continue);
         assert_eq!(app.state, AppState::Browsing);
     }
 
     #[test]
-    fn browsing_ctrl_o_with_no_files_returns_continue() {
+    fn browsing_o_with_no_files_returns_continue() {
         let mut app = make_app_with_files(vec![]);
 
-        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('o')));
+        let action = app.handle_event(make_key_event(KeyCode::Char('o')));
         assert_eq!(action, AppAction::Continue);
     }
 
     #[test]
-    fn browsing_ctrl_r_with_no_files_returns_continue() {
+    fn browsing_r_with_no_files_returns_continue() {
         let mut app = make_app_with_files(vec![]);
 
-        let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('r')));
+        let action = app.handle_event(make_key_event(KeyCode::Char('r')));
         assert_eq!(action, AppAction::Continue);
     }
 
