@@ -184,7 +184,10 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default().add_modifier(Modifier::REVERSED),
             ));
         } else {
-            spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
+            spans.push(Span::styled(
+                " ",
+                Style::default().add_modifier(Modifier::REVERSED),
+            ));
         }
         spans.push(Span::raw(after));
         spans
@@ -267,7 +270,10 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default().add_modifier(Modifier::REVERSED),
             ));
         } else {
-            spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
+            spans.push(Span::styled(
+                " ",
+                Style::default().add_modifier(Modifier::REVERSED),
+            ));
         }
         spans.push(Span::raw(after));
         spans
@@ -377,16 +383,38 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
             ch.to_string(),
             Style::default().add_modifier(Modifier::REVERSED),
         ));
-    } else {
-        new_name_spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
-    }
-    new_name_spans.push(Span::raw(name_after));
-    if app.name_input.is_empty() {
+        new_name_spans.push(Span::raw(name_after));
+        if app.name_input.is_empty() {
+            if !ext_suffix.is_empty() {
+                new_name_spans.push(Span::styled("<keep>", Style::default().fg(HINT_COLOR)));
+            }
+        } else if !ext_suffix.is_empty() {
+            new_name_spans.push(Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)));
+        }
+    } else if app.name_input.is_empty() {
+        // Cursor at end, input empty: reversed-space cursor, then <keep> hint if extension exists.
+        new_name_spans.push(Span::styled(
+            " ",
+            Style::default().add_modifier(Modifier::REVERSED),
+        ));
         if !ext_suffix.is_empty() {
             new_name_spans.push(Span::styled("<keep>", Style::default().fg(HINT_COLOR)));
         }
     } else if !ext_suffix.is_empty() {
-        new_name_spans.push(Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)));
+        // Cursor at end of non-empty input with extension: use '.' as the cursor, rest of ext in hint color.
+        let dot_cursor = ".";
+        let ext_rest = &ext_suffix[dot_cursor.len()..];
+        new_name_spans.push(Span::styled(
+            dot_cursor,
+            Style::default().add_modifier(Modifier::REVERSED),
+        ));
+        new_name_spans.push(Span::styled(ext_rest, Style::default().fg(HINT_COLOR)));
+    } else {
+        // Cursor at end, no extension: reversed-space cursor.
+        new_name_spans.push(Span::styled(
+            " ",
+            Style::default().add_modifier(Modifier::REVERSED),
+        ));
     }
     lines.push(Line::from(new_name_spans));
 
