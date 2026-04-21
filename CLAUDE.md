@@ -13,6 +13,8 @@ When spawning agents, choose the model appropriate to the task:
 
 Spawn one agent per independent concern — keep each agent's context small and focused on a surgical change. Run agents serially (one after another), not in parallel — concurrent agents risk conflicting edits and git conflicts. When a batch of changes contains independent concerns (e.g. Ctrl+C behaviour vs. rendering vs. layout), split them into separate agents rather than bundling into one.
 
+Each independent change gets its own commit. If an agent implements multiple independent changes, it must commit them separately.
+
 ## Toolchain
 
 - Rust: latest stable
