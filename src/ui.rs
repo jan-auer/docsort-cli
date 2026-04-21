@@ -165,10 +165,21 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled("type to search", Style::default().fg(HINT_COLOR)),
         ]
     } else {
+        let before: String = app
+            .search_query
+            .chars()
+            .take(app.search_input_pos)
+            .collect();
+        let after: String = app
+            .search_query
+            .chars()
+            .skip(app.search_input_pos)
+            .collect();
         vec![
             Span::styled("> ", Style::default().fg(Color::Cyan)),
-            Span::raw(&app.search_query),
+            Span::raw(before),
             Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
+            Span::raw(after),
         ]
     };
 
@@ -227,10 +238,21 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled("type to search", Style::default().fg(HINT_COLOR)),
         ]
     } else {
+        let before: String = app
+            .search_query
+            .chars()
+            .take(app.search_input_pos)
+            .collect();
+        let after: String = app
+            .search_query
+            .chars()
+            .skip(app.search_input_pos)
+            .collect();
         vec![
             Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
-            Span::raw(&app.search_query),
+            Span::raw(before),
             Span::styled("\u{2588}", Style::default().fg(Color::Magenta)),
+            Span::raw(after),
         ]
     };
 
@@ -321,10 +343,13 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)),
     ]));
 
+    let name_before: String = app.name_input.chars().take(app.name_input_pos).collect();
+    let name_after: String = app.name_input.chars().skip(app.name_input_pos).collect();
     let mut new_name_spans = vec![
         Span::styled(new_name_label, Style::default().fg(Color::Cyan)),
-        Span::raw(&app.name_input),
+        Span::raw(name_before),
         Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
+        Span::raw(name_after),
     ];
     if app.name_input.is_empty() {
         if !ext_suffix.is_empty() {
