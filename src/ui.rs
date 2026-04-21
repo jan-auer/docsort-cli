@@ -279,12 +279,19 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)),
     ]));
 
-    lines.push(Line::from(vec![
+    let mut new_name_spans = vec![
         Span::styled(new_name_label, Style::default().fg(Color::Cyan)),
         Span::raw(&app.name_input),
         Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
-        Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)),
-    ]));
+    ];
+    if app.name_input.is_empty() {
+        if !ext_suffix.is_empty() {
+            new_name_spans.push(Span::styled("<keep>", Style::default().fg(HINT_COLOR)));
+        }
+    } else if !ext_suffix.is_empty() {
+        new_name_spans.push(Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)));
+    }
+    lines.push(Line::from(new_name_spans));
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, area);
