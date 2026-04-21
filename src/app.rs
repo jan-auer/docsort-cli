@@ -40,6 +40,8 @@ pub enum AppState {
     Naming,
     /// Waiting for the user to confirm deletion of the highlighted file.
     ConfirmDelete,
+    /// Waiting for the user to confirm overwriting an existing file at the destination.
+    ConfirmOverwrite,
 }
 
 /// Actions returned by `App::handle_event` to communicate with the event loop.
@@ -110,6 +112,8 @@ pub struct App {
     pub selected_dest: Option<String>,
     /// In-session history of recently-used destination folders, most recent first.
     pub dest_history: Vec<String>,
+    /// Pending move operation awaiting overwrite confirmation: `(src, dest_path, final_name, dest_rel)`.
+    pending_overwrite: Option<(PathBuf, PathBuf, String, String)>,
 }
 
 impl App {
@@ -134,6 +138,7 @@ impl App {
             dest_root: config.destination.root.clone(),
             selected_dest: None,
             dest_history: Vec::new(),
+            pending_overwrite: None,
         }
     }
 
@@ -175,6 +180,7 @@ impl App {
             AppState::SubfolderCreation => self.handle_subfolder_creation(event),
             AppState::Naming => self.handle_naming(event),
             AppState::ConfirmDelete => self.handle_confirm_delete(event),
+            AppState::ConfirmOverwrite => self.handle_confirm_overwrite(event),
         }
     }
 
@@ -646,6 +652,9 @@ impl App {
     }
 
     /// Attempts to move the file and returns the appropriate action.
+    ///
+    /// If the destination file already exists, transitions to `ConfirmOverwrite`
+    /// and returns `Continue`; the move is not performed until confirmed.
     fn confirm_move(&mut self) -> AppAction {
         let Some(file) = self.files.get(self.cursor) else {
             return AppAction::Continue;
@@ -662,10 +671,60 @@ impl App {
             self.build_final_name(&file.filename)
         };
 
+        let dest_path = dest_dir.join(&final_name);
+        if dest_path.exists() {
+            self.pending_overwrite = Some((src, dest_path, final_name, dest_rel));
+            self.state = AppState::ConfirmOverwrite;
+            return AppAction::Continue;
+        }
+
+        self.execute_move(file.path.clone(), src, dest_dir, final_name, dest_rel)
+    }
+
+    /// Handles key events in `ConfirmOverwrite` mode.
+    fn handle_confirm_overwrite(&mut self, event: KeyEvent) -> AppAction {
+        match event.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let Some((src, dest_path, final_name, dest_rel)) = self.pending_overwrite.take()
+                else {
+                    self.state = AppState::Browsing;
+                    return AppAction::Continue;
+                };
+                let dest_dir = match dest_path.parent() {
+                    Some(d) => d.to_path_buf(),
+                    None => {
+                        self.state = AppState::Browsing;
+                        return AppAction::Continue;
+                    }
+                };
+                let file_path = self
+                    .files
+                    .get(self.cursor)
+                    .map(|f| f.path.clone())
+                    .unwrap_or_else(|| src.clone());
+                self.execute_move(file_path, src, dest_dir, final_name, dest_rel)
+            }
+            _ => {
+                self.pending_overwrite = None;
+                self.state = AppState::Naming;
+                AppAction::Continue
+            }
+        }
+    }
+
+    /// Executes the actual file move and updates app state, returning the action.
+    fn execute_move(
+        &mut self,
+        original_path: PathBuf,
+        src: PathBuf,
+        dest_dir: PathBuf,
+        final_name: String,
+        dest_rel: String,
+    ) -> AppAction {
         match file_ops::move_file(&src, &dest_dir, &final_name) {
             Ok(dest_path) => {
                 self.quick_look.close();
-                self.moved.insert(file.path.clone(), dest_path.clone());
+                self.moved.insert(original_path.clone(), dest_path.clone());
                 self.state = AppState::Browsing;
                 self.name_input.clear();
                 self.name_input_pos = 0;
@@ -685,13 +744,14 @@ impl App {
                 }
 
                 AppAction::CommitMove {
-                    src: file.path.clone(),
+                    src: original_path,
                     dest: dest_path,
                     name: final_name,
                 }
             }
             Err(e) => {
                 self.error_message = Some(format!("Move failed: {e}"));
+                self.state = AppState::Browsing;
                 AppAction::Continue
             }
         }
@@ -766,7 +826,9 @@ impl App {
     /// `MAX_LIST_HEIGHT` is used.
     pub fn desired_viewport_height(&self) -> u16 {
         match self.state {
-            AppState::Browsing | AppState::ConfirmDelete => viewport_height(self.files.len()),
+            AppState::Browsing | AppState::ConfirmDelete | AppState::ConfirmOverwrite => {
+                viewport_height(self.files.len())
+            }
             AppState::Searching | AppState::SubfolderCreation | AppState::Naming => MAX_LIST_HEIGHT,
         }
     }
@@ -1550,6 +1612,164 @@ mod tests {
 
         let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('r')));
         assert_eq!(action, AppAction::Continue);
+    }
+
+    #[test]
+    fn confirm_move_prompts_overwrite_when_dest_exists() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        // Source file.
+        let src_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&src_path, b"source").unwrap();
+
+        // Pre-existing file at destination.
+        let dest_subdir = dir.path().join("dest");
+        std::fs::create_dir(&dest_subdir).unwrap();
+        std::fs::write(dest_subdir.join("doc.pdf"), b"existing").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+        app.name_input.clear(); // keep original name → conflict
+
+        let action = app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::ConfirmOverwrite);
+        // Source must still exist; nothing moved yet.
+        assert!(src_path.exists());
+        assert_eq!(
+            std::fs::read(dest_subdir.join("doc.pdf")).unwrap(),
+            b"existing"
+        );
+    }
+
+    #[test]
+    fn confirm_overwrite_y_proceeds_with_move() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&src_path, b"new content").unwrap();
+
+        let dest_subdir = dir.path().join("dest");
+        std::fs::create_dir(&dest_subdir).unwrap();
+        std::fs::write(dest_subdir.join("doc.pdf"), b"old content").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+
+        // Trigger the overwrite prompt.
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.state, AppState::ConfirmOverwrite);
+
+        // Confirm with 'y'.
+        let action = app.handle_event(make_key_event(KeyCode::Char('y')));
+        match action {
+            AppAction::CommitMove { name, .. } => assert_eq!(name, "doc.pdf"),
+            other => panic!("expected CommitMove, got {other:?}"),
+        }
+        assert_eq!(app.state, AppState::Browsing);
+        assert!(!src_path.exists());
+        assert_eq!(
+            std::fs::read(dest_subdir.join("doc.pdf")).unwrap(),
+            b"new content"
+        );
+    }
+
+    #[test]
+    fn confirm_overwrite_n_cancels_move() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&src_path, b"source").unwrap();
+
+        let dest_subdir = dir.path().join("dest");
+        std::fs::create_dir(&dest_subdir).unwrap();
+        std::fs::write(dest_subdir.join("doc.pdf"), b"existing").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.state, AppState::ConfirmOverwrite);
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('n')));
+        assert_eq!(action, AppAction::Continue);
+        // Returns to Naming so the user can rename.
+        assert_eq!(app.state, AppState::Naming);
+        // Source must still be intact.
+        assert!(src_path.exists());
+        assert_eq!(
+            std::fs::read(dest_subdir.join("doc.pdf")).unwrap(),
+            b"existing"
+        );
+    }
+
+    #[test]
+    fn confirm_overwrite_esc_cancels_move() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&src_path, b"source").unwrap();
+
+        let dest_subdir = dir.path().join("dest");
+        std::fs::create_dir(&dest_subdir).unwrap();
+        std::fs::write(dest_subdir.join("doc.pdf"), b"existing").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        app.state = AppState::Naming;
+        app.selected_dest = Some("dest".to_string());
+        app.handle_event(make_key_event(KeyCode::Enter));
+        assert_eq!(app.state, AppState::ConfirmOverwrite);
+
+        let action = app.handle_event(make_key_event(KeyCode::Esc));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Naming);
+        assert!(src_path.exists());
     }
 
     #[test]

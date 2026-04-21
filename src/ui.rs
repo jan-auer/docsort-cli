@@ -30,7 +30,9 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_separator(frame, top_separator_area);
 
     match app.state {
-        AppState::Browsing | AppState::ConfirmDelete => render_browsing(frame, app, content_area),
+        AppState::Browsing | AppState::ConfirmDelete | AppState::ConfirmOverwrite => {
+            render_browsing(frame, app, content_area)
+        }
         AppState::Searching => render_searching(frame, app, content_area),
         AppState::SubfolderCreation => render_subfolder_creation(frame, app, content_area),
         AppState::Naming => render_naming(frame, app, content_area),
@@ -462,6 +464,10 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
             AppState::ConfirmDelete => Line::from(Span::styled(
                 "delete? [y/N]",
                 Style::default().fg(Color::Red),
+            )),
+            AppState::ConfirmOverwrite => Line::from(Span::styled(
+                "file already exists at destination — overwrite? [y/N]",
+                Style::default().fg(Color::Rgb(210, 120, 0)),
             )),
             AppState::Searching => Line::from(Span::styled(
                 "\u{21b5} confirm  Tab new folder  Esc cancel  ^Spc preview",
