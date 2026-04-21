@@ -514,6 +514,18 @@ impl App {
     pub fn current_file(&self) -> Option<&InboxFile> {
         self.files.get(self.cursor)
     }
+
+    /// Returns the desired inline viewport height for the current state.
+    ///
+    /// In `Browsing` mode the viewport is sized to the file list. In all other
+    /// modes (`Searching`, `SubfolderCreation`, `Naming`) the result list may
+    /// be arbitrarily long, so the full `MAX_LIST_HEIGHT` is used.
+    pub fn desired_viewport_height(&self) -> u16 {
+        match self.state {
+            AppState::Browsing => viewport_height(self.files.len()),
+            AppState::Searching | AppState::SubfolderCreation | AppState::Naming => MAX_LIST_HEIGHT,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -992,5 +1004,42 @@ mod tests {
 
         app.handle_event(make_key_event(KeyCode::Enter));
         assert_eq!(app.state, AppState::Searching);
+    }
+
+    #[test]
+    fn desired_viewport_height_browsing_uses_file_count() {
+        // 3 files → viewport_height(3) = 6.
+        let files = vec![
+            make_inbox_file("A", "a.pdf", "/tmp/a.pdf"),
+            make_inbox_file("B", "b.pdf", "/tmp/b.pdf"),
+            make_inbox_file("C", "c.pdf", "/tmp/c.pdf"),
+        ];
+        let app = make_app_with_files(files);
+        assert_eq!(app.state, AppState::Browsing);
+        assert_eq!(app.desired_viewport_height(), viewport_height(3));
+    }
+
+    #[test]
+    fn desired_viewport_height_searching_uses_max() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Searching;
+        assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
+    }
+
+    #[test]
+    fn desired_viewport_height_subfolder_creation_uses_max() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::SubfolderCreation;
+        assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
+    }
+
+    #[test]
+    fn desired_viewport_height_naming_uses_max() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        assert_eq!(app.desired_viewport_height(), MAX_LIST_HEIGHT);
     }
 }

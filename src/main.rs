@@ -116,17 +116,18 @@ fn resolve_config_path(explicit: Option<PathBuf>) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Initializes an inline terminal with a viewport sized to the file list.
-fn init_terminal(file_count: usize) -> Result<DefaultTerminal> {
+/// Initializes an inline terminal with a viewport of the given height.
+fn init_terminal(height: u16) -> Result<DefaultTerminal> {
     let terminal = ratatui::init_with_options(TerminalOptions {
-        viewport: Viewport::Inline(viewport_height(file_count)),
+        viewport: Viewport::Inline(height),
     });
     Ok(terminal)
 }
 
 /// Runs the main TUI event loop with the commit-and-reinit pattern.
 fn run_event_loop(app: &mut App) -> Result<()> {
-    let mut terminal = init_terminal(app.files.len())?;
+    let mut current_height = viewport_height(app.files.len());
+    let mut terminal = init_terminal(current_height)?;
 
     loop {
         terminal
@@ -148,7 +149,16 @@ fn run_event_loop(app: &mut App) -> Result<()> {
 
         let action = app.handle_event(key);
         match action {
-            AppAction::Continue => {}
+            AppAction::Continue => {
+                // Resize the terminal if the desired viewport height changed.
+                let desired = app.desired_viewport_height();
+                if desired != current_height {
+                    drop(terminal);
+                    ratatui::restore();
+                    current_height = desired;
+                    terminal = init_terminal(current_height)?;
+                }
+            }
             AppAction::CommitMove { src, dest, name } => {
                 // Tear down the terminal so the summary line enters the scroll buffer.
                 drop(terminal);
@@ -164,8 +174,9 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                     .unwrap_or_else(|| dest.to_string_lossy().into_owned());
                 println!("\u{2713} {src_name} \u{2192} {dest_display}/{name}");
 
-                // Reinitialize the terminal.
-                terminal = init_terminal(app.files.len())?;
+                // Reinitialize the terminal at the appropriate height.
+                current_height = app.desired_viewport_height();
+                terminal = init_terminal(current_height)?;
             }
             AppAction::Quit => {
                 drop(terminal);
