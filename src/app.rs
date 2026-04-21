@@ -54,7 +54,7 @@ pub enum AppAction {
     CommitMove {
         /// Original inbox path of the moved file.
         src: PathBuf,
-        /// Final destination path after the move.
+        /// Full destination file path (use `.parent()` for the directory).
         dest: PathBuf,
         /// Filename used at the destination.
         name: String,
