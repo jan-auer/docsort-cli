@@ -321,10 +321,12 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(Span::styled(err.as_str(), Style::default().fg(color)))
     } else {
         let hints = match app.state {
-            AppState::Browsing => "\u{2191}\u{2193} navigate  Enter file  ^Space preview  ^C quit",
-            AppState::Searching => "Enter confirm  Tab new folder  Esc cancel  ^Spc preview",
-            AppState::SubfolderCreation => "Enter create  Esc cancel",
-            AppState::Naming => "Enter confirm (empty=keep)  Esc clear/back",
+            AppState::Browsing => {
+                "\u{2191}\u{2193} navigate  \u{21b5} file  ^Space preview  ^C quit"
+            }
+            AppState::Searching => "\u{21b5} confirm  Tab new folder  Esc cancel  ^Spc preview",
+            AppState::SubfolderCreation => "\u{21b5} create  Esc cancel",
+            AppState::Naming => "\u{21b5} confirm (empty=keep)  Esc clear/back",
         };
         Line::from(Span::styled(
             hints.to_string(),
