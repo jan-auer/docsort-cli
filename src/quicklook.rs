@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 
 use anyhow::{Context, Result};
 
@@ -22,12 +22,30 @@ impl QuickLook {
         }
     }
 
+    /// Polls the child process to detect external closes.
+    ///
+    /// If the `qlmanage` process has exited on its own (e.g. the user closed
+    /// the Quick Look window), clears `process` and `current_path` so that
+    /// subsequent calls reflect the true state.
+    pub fn poll(&mut self) {
+        let exited = if let Some(child) = self.process.as_mut() {
+            matches!(child.try_wait(), Ok(Some(_)))
+        } else {
+            false
+        };
+        if exited {
+            self.process = None;
+            self.current_path = None;
+        }
+    }
+
     /// Toggles the Quick Look preview for `path`.
     ///
     /// - If no preview is open, opens `path`.
     /// - If the same file is already open, closes it.
     /// - If a different file is open, switches to `path`.
     pub fn toggle(&mut self, path: &Path) {
+        self.poll();
         if self.is_open_for(path) {
             self.close();
         } else {
@@ -67,7 +85,10 @@ impl QuickLook {
     }
 
     /// Returns `true` if a Quick Look preview is currently open for `path`.
-    pub fn is_open_for(&self, path: &Path) -> bool {
+    ///
+    /// Calls `poll()` first to detect any externally-closed process.
+    pub fn is_open_for(&mut self, path: &Path) -> bool {
+        self.poll();
         self.current_path.as_deref() == Some(path)
     }
 }
@@ -85,9 +106,13 @@ impl Drop for QuickLook {
 }
 
 /// Spawns `qlmanage -p <path>` and returns the child process handle.
+///
+/// Stdout and stderr are redirected to null to suppress diagnostic noise.
 fn spawn_qlmanage(path_str: &str) -> Result<Child> {
     Command::new("qlmanage")
         .args(["-p", path_str])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .context("failed to spawn qlmanage")
 }
@@ -100,7 +125,7 @@ mod tests {
 
     #[test]
     fn new_has_no_active_preview() {
-        let ql = QuickLook::new();
+        let mut ql = QuickLook::new();
         assert!(!ql.is_open_for(Path::new("/any/path")));
         assert!(ql.current_path.is_none());
         assert!(ql.process.is_none());
@@ -108,7 +133,7 @@ mod tests {
 
     #[test]
     fn is_open_for_returns_false_for_different_path() {
-        let ql = QuickLook::new();
+        let mut ql = QuickLook::new();
         assert!(!ql.is_open_for(Path::new("/some/file.pdf")));
     }
 
