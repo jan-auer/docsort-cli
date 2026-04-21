@@ -266,11 +266,11 @@ impl App {
         match event.code {
             KeyCode::Enter => self.confirm_move(),
             KeyCode::Esc => {
-                self.cancel_naming();
-                AppAction::Continue
-            }
-            KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.name_input.clear();
+                if self.name_input.is_empty() {
+                    self.cancel_naming();
+                } else {
+                    self.name_input.clear();
+                }
                 AppAction::Continue
             }
             KeyCode::Char(' ') if event.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -752,13 +752,41 @@ mod tests {
     }
 
     #[test]
-    fn naming_esc_returns_to_searching() {
+    fn naming_esc_with_empty_input_returns_to_searching() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
         app.state = AppState::Naming;
 
         let action = app.handle_event(make_key_event(KeyCode::Esc));
         assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Searching);
+    }
+
+    #[test]
+    fn naming_esc_with_nonempty_input_clears_and_stays_in_naming() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "some text".to_string();
+
+        let action = app.handle_event(make_key_event(KeyCode::Esc));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Naming);
+        assert_eq!(app.name_input, "");
+    }
+
+    #[test]
+    fn naming_esc_twice_clears_then_returns_to_searching() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "some text".to_string();
+
+        app.handle_event(make_key_event(KeyCode::Esc));
+        assert_eq!(app.state, AppState::Naming);
+        assert_eq!(app.name_input, "");
+
+        app.handle_event(make_key_event(KeyCode::Esc));
         assert_eq!(app.state, AppState::Searching);
     }
 
@@ -772,17 +800,6 @@ mod tests {
         app.handle_event(make_key_event(KeyCode::Char('e')));
         app.handle_event(make_key_event(KeyCode::Char('w')));
         assert_eq!(app.name_input, "new");
-    }
-
-    #[test]
-    fn naming_ctrl_u_clears_input() {
-        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
-        let mut app = make_app_with_files(files);
-        app.state = AppState::Naming;
-        app.name_input = "some text".to_string();
-
-        app.handle_event(make_ctrl_key_event(KeyCode::Char('u')));
-        assert_eq!(app.name_input, "");
     }
 
     #[test]

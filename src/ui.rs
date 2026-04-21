@@ -306,7 +306,7 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
             AppState::Browsing => "\u{2191}\u{2193} navigate  Enter file  Space preview  ^C quit",
             AppState::Searching => "Enter confirm  Tab new folder  Esc cancel  ^Spc preview",
             AppState::SubfolderCreation => "Enter create  Esc cancel",
-            AppState::Naming => "Enter confirm (empty=keep)  ^U clear  Esc back",
+            AppState::Naming => "Enter confirm (empty=keep)  Esc clear/back",
         };
         Line::from(Span::styled(
             hints.to_string(),
