@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{App, AppState};
@@ -346,12 +346,18 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
 /// are left blank. File names use the same style as non-highlighted entries in
 /// the left fuzzy results list.
 fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(Style::default().fg(HINT_COLOR));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     let selected = app.search_results.get(app.search_cursor);
     let files = selected
         .and_then(|rel| DestIndex::list_files(&app.dest_root, rel).ok())
         .unwrap_or_default();
 
-    let visible_rows = area.height as usize;
+    let visible_rows = inner.height as usize;
     let mut lines: Vec<Line> = files
         .iter()
         .take(visible_rows)
@@ -364,7 +370,7 @@ fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, area);
+    frame.render_widget(paragraph, inner);
 }
 
 /// Computes the visible window range for a scrollable list.
