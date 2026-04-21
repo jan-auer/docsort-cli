@@ -224,10 +224,6 @@ impl App {
                 self.reveal_highlighted_file_in_finder();
                 AppAction::Continue
             }
-            KeyCode::Char('o') => {
-                self.open_last_dest_in_finder();
-                AppAction::Continue
-            }
             KeyCode::Char('d') => {
                 self.enter_confirm_delete();
                 AppAction::Continue
@@ -467,15 +463,6 @@ impl App {
         if let Some(file) = self.files.get(self.cursor) {
             let effective_path = self.effective_path(&file.path);
             self.quick_look.toggle(&effective_path);
-        }
-    }
-
-    /// Opens the most recently moved-to destination directory in Finder.
-    fn open_last_dest_in_finder(&mut self) {
-        if let Some(dest) = self.moved.values().last() {
-            if let Some(parent) = dest.parent() {
-                let _ = std::process::Command::new("open").arg(parent).spawn();
-            }
         }
     }
 
