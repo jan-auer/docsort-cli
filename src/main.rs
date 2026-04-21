@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use argh::FromArgs;
+use crossterm::cursor;
 use crossterm::event::{self, Event, KeyEvent};
 use crossterm::style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor};
 use ratatui::{DefaultTerminal, TerminalOptions, Viewport};
@@ -124,25 +125,6 @@ fn init_terminal(height: u16) -> Result<DefaultTerminal> {
     Ok(terminal)
 }
 
-/// Clears the inline viewport by moving the cursor up and erasing to end of screen.
-///
-/// Must be called before dropping the terminal so stale content from the old
-/// viewport does not remain visible when the terminal is recreated at a
-/// different height.
-fn clear_viewport(height: u16) -> Result<()> {
-    use crossterm::{
-        cursor, execute,
-        terminal::{Clear, ClearType},
-    };
-    let mut stdout = std::io::stdout();
-    execute!(
-        stdout,
-        cursor::MoveUp(height.saturating_sub(1)),
-        Clear(ClearType::FromCursorDown)
-    )?;
-    Ok(())
-}
-
 /// Runs the main TUI event loop with the commit-and-reinit pattern.
 fn run_event_loop(app: &mut App) -> Result<()> {
     let mut current_height = viewport_height(app.files.len());
@@ -172,7 +154,11 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 // Resize the terminal if the desired viewport height changed.
                 let desired = app.desired_viewport_height();
                 if desired != current_height {
-                    clear_viewport(current_height)?;
+                    // terminal.clear() uses ratatui's tracked viewport_area to
+                    // position the cursor, avoiding manual offset arithmetic.
+                    terminal
+                        .clear()
+                        .context("failed to clear inline viewport")?;
                     drop(terminal);
                     crossterm::terminal::disable_raw_mode()
                         .context("failed to disable raw mode")?;
@@ -181,9 +167,11 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 }
             }
             AppAction::CommitMove { src, dest, name } => {
-                // Clear stale viewport content before tearing down the terminal so
-                // the summary line is printed on a clean line in the scroll buffer.
-                clear_viewport(current_height)?;
+                // terminal.clear() blanks the viewport using ratatui's tracked
+                // position so the summary line prints on a clean scroll buffer line.
+                terminal
+                    .clear()
+                    .context("failed to clear inline viewport")?;
                 drop(terminal);
                 crossterm::terminal::disable_raw_mode().context("failed to disable raw mode")?;
 
@@ -202,11 +190,15 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 terminal = init_terminal(current_height)?;
             }
             AppAction::Quit => {
-                clear_viewport(current_height)?;
+                terminal
+                    .clear()
+                    .context("failed to clear inline viewport")?;
                 drop(terminal);
                 crossterm::terminal::disable_raw_mode().context("failed to disable raw mode")?;
-                crossterm::execute!(std::io::stdout(), crossterm::cursor::Show)
-                    .context("failed to show cursor")?;
+                // Move cursor to column 0 and show it so the shell prompt
+                // starts cleanly (avoids zsh's partial-line `%` indicator).
+                crossterm::execute!(std::io::stdout(), cursor::MoveToColumn(0), cursor::Show)
+                    .context("failed to restore cursor")?;
                 return Ok(());
             }
         }
