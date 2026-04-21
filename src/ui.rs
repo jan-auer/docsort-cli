@@ -69,7 +69,7 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
         let is_highlighted = i == app.cursor;
         let is_moved = app.moved.contains_key(&file.path);
 
-        let prefix = if is_highlighted { "\u{25b6}" } else { " " };
+        let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
         let label_text = &file.label;
         let filename = &file.filename;
 
@@ -133,7 +133,7 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     for i in start..end {
         let result = &app.search_results[i];
         let is_highlighted = i == app.search_cursor;
-        let prefix = if is_highlighted { "\u{25b6}" } else { " " };
+        let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
         let style = if is_highlighted {
             Style::default()
                 .add_modifier(Modifier::BOLD)
@@ -176,7 +176,7 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
     for i in start..end {
         let result = &app.search_results[i];
         let is_highlighted = i == app.search_cursor;
-        let prefix = if is_highlighted { "\u{25b6}" } else { " " };
+        let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
         let style = if is_highlighted {
             Style::default()
                 .add_modifier(Modifier::BOLD)
