@@ -248,16 +248,11 @@ impl App {
                 AppAction::Continue
             }
             KeyCode::Left => {
-                if self.search_input_pos > 0 {
-                    self.search_input_pos -= 1;
-                }
+                text_input_move_left(&mut self.search_input_pos);
                 AppAction::Continue
             }
             KeyCode::Right => {
-                let char_count = self.search_query.chars().count();
-                if self.search_input_pos < char_count {
-                    self.search_input_pos += 1;
-                }
+                text_input_move_right(&self.search_query, &mut self.search_input_pos);
                 AppAction::Continue
             }
             KeyCode::Enter => {
@@ -283,29 +278,13 @@ impl App {
                 AppAction::Continue
             }
             KeyCode::Char(c) => {
-                let byte_pos = self
-                    .search_query
-                    .char_indices()
-                    .nth(self.search_input_pos)
-                    .map(|(b, _)| b)
-                    .unwrap_or(self.search_query.len());
-                self.search_query.insert(byte_pos, c);
-                self.search_input_pos += 1;
+                text_input_insert(&mut self.search_query, &mut self.search_input_pos, c);
                 self.update_search_results();
                 AppAction::Continue
             }
             KeyCode::Backspace => {
-                if self.search_input_pos > 0 {
-                    let byte_pos = self
-                        .search_query
-                        .char_indices()
-                        .nth(self.search_input_pos - 1)
-                        .map(|(b, _)| b)
-                        .unwrap_or(self.search_query.len());
-                    self.search_query.remove(byte_pos);
-                    self.search_input_pos -= 1;
-                    self.update_search_results();
-                }
+                text_input_backspace(&mut self.search_query, &mut self.search_input_pos);
+                self.update_search_results();
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -316,16 +295,11 @@ impl App {
     fn handle_subfolder_creation(&mut self, event: KeyEvent) -> AppAction {
         match event.code {
             KeyCode::Left => {
-                if self.search_input_pos > 0 {
-                    self.search_input_pos -= 1;
-                }
+                text_input_move_left(&mut self.search_input_pos);
                 AppAction::Continue
             }
             KeyCode::Right => {
-                let char_count = self.search_query.chars().count();
-                if self.search_input_pos < char_count {
-                    self.search_input_pos += 1;
-                }
+                text_input_move_right(&self.search_query, &mut self.search_input_pos);
                 AppAction::Continue
             }
             KeyCode::Enter => {
@@ -346,27 +320,11 @@ impl App {
                 AppAction::Continue
             }
             KeyCode::Char(c) => {
-                let byte_pos = self
-                    .search_query
-                    .char_indices()
-                    .nth(self.search_input_pos)
-                    .map(|(b, _)| b)
-                    .unwrap_or(self.search_query.len());
-                self.search_query.insert(byte_pos, c);
-                self.search_input_pos += 1;
+                text_input_insert(&mut self.search_query, &mut self.search_input_pos, c);
                 AppAction::Continue
             }
             KeyCode::Backspace => {
-                if self.search_input_pos > 0 {
-                    let byte_pos = self
-                        .search_query
-                        .char_indices()
-                        .nth(self.search_input_pos - 1)
-                        .map(|(b, _)| b)
-                        .unwrap_or(self.search_query.len());
-                    self.search_query.remove(byte_pos);
-                    self.search_input_pos -= 1;
-                }
+                text_input_backspace(&mut self.search_query, &mut self.search_input_pos);
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -377,16 +335,11 @@ impl App {
     fn handle_naming(&mut self, event: KeyEvent) -> AppAction {
         match event.code {
             KeyCode::Left => {
-                if self.name_input_pos > 0 {
-                    self.name_input_pos -= 1;
-                }
+                text_input_move_left(&mut self.name_input_pos);
                 AppAction::Continue
             }
             KeyCode::Right => {
-                let char_count = self.name_input.chars().count();
-                if self.name_input_pos < char_count {
-                    self.name_input_pos += 1;
-                }
+                text_input_move_right(&self.name_input, &mut self.name_input_pos);
                 AppAction::Continue
             }
             KeyCode::Enter => self.confirm_move(),
@@ -409,27 +362,11 @@ impl App {
                 AppAction::Continue
             }
             KeyCode::Char(c) => {
-                let byte_pos = self
-                    .name_input
-                    .char_indices()
-                    .nth(self.name_input_pos)
-                    .map(|(b, _)| b)
-                    .unwrap_or(self.name_input.len());
-                self.name_input.insert(byte_pos, c);
-                self.name_input_pos += 1;
+                text_input_insert(&mut self.name_input, &mut self.name_input_pos, c);
                 AppAction::Continue
             }
             KeyCode::Backspace => {
-                if self.name_input_pos > 0 {
-                    let byte_pos = self
-                        .name_input
-                        .char_indices()
-                        .nth(self.name_input_pos - 1)
-                        .map(|(b, _)| b)
-                        .unwrap_or(self.name_input.len());
-                    self.name_input.remove(byte_pos);
-                    self.name_input_pos -= 1;
-                }
+                text_input_backspace(&mut self.name_input, &mut self.name_input_pos);
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -881,6 +818,51 @@ impl App {
             }
             AppState::Searching | AppState::SubfolderCreation | AppState::Naming => MAX_LIST_HEIGHT,
         }
+    }
+}
+
+/// Moves the cursor one character to the left in a text input.
+///
+/// Does nothing if the cursor is already at position 0.
+fn text_input_move_left(pos: &mut usize) {
+    if *pos > 0 {
+        *pos -= 1;
+    }
+}
+
+/// Moves the cursor one character to the right in a text input.
+///
+/// Does nothing if the cursor is already past the last character.
+fn text_input_move_right(text: &str, pos: &mut usize) {
+    let char_count = text.chars().count();
+    if *pos < char_count {
+        *pos += 1;
+    }
+}
+
+/// Inserts a character at the current cursor position and advances the cursor.
+fn text_input_insert(text: &mut String, pos: &mut usize, c: char) {
+    let byte_pos = text
+        .char_indices()
+        .nth(*pos)
+        .map(|(b, _)| b)
+        .unwrap_or(text.len());
+    text.insert(byte_pos, c);
+    *pos += 1;
+}
+
+/// Deletes the character before the cursor (backspace).
+///
+/// Does nothing if the cursor is at position 0.
+fn text_input_backspace(text: &mut String, pos: &mut usize) {
+    if *pos > 0 {
+        let byte_pos = text
+            .char_indices()
+            .nth(*pos - 1)
+            .map(|(b, _)| b)
+            .unwrap_or(text.len());
+        text.remove(byte_pos);
+        *pos -= 1;
     }
 }
 
