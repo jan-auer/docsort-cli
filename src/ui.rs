@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{App, AppState};
@@ -128,7 +128,9 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     let right_area = chunks[1];
 
     // Left pane: search results.
-    let visible_rows = left_area.height.saturating_sub(1) as usize; // reserve 1 row for input
+    let left_block = Block::default().padding(Padding::new(0, 1, 0, 0));
+    let left_inner = left_block.inner(left_area);
+    let visible_rows = left_inner.height.saturating_sub(1) as usize; // reserve 1 row for input
     let (start, end) = visible_window(app.search_cursor, app.search_results.len(), visible_rows);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -152,7 +154,7 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     ]));
 
     let left_paragraph = Paragraph::new(lines);
-    frame.render_widget(left_paragraph, left_area);
+    frame.render_widget(left_paragraph, left_inner);
 
     // Right pane: files in the highlighted destination.
     render_dest_files(frame, app, right_area);
@@ -169,7 +171,9 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
     let right_area = chunks[1];
 
     // Left pane: search results (frozen).
-    let visible_rows = left_area.height.saturating_sub(1) as usize;
+    let left_block = Block::default().padding(Padding::new(0, 1, 0, 0));
+    let left_inner = left_block.inner(left_area);
+    let visible_rows = left_inner.height.saturating_sub(1) as usize;
     let (start, end) = visible_window(app.search_cursor, app.search_results.len(), visible_rows);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -193,7 +197,7 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
     ]));
 
     let left_paragraph = Paragraph::new(lines);
-    frame.render_widget(left_paragraph, left_area);
+    frame.render_widget(left_paragraph, left_inner);
 
     render_dest_files(frame, app, right_area);
 }
@@ -348,7 +352,8 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::LEFT)
-        .border_style(Style::default().fg(HINT_COLOR));
+        .border_style(Style::default().fg(HINT_COLOR))
+        .padding(Padding::new(1, 0, 0, 0));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
