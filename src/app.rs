@@ -544,7 +544,7 @@ mod tests {
     fn make_config(dest_root: &str) -> Config {
         Config {
             inboxes: vec![InboxConfig {
-                label: "Test".to_string(),
+                label: Some("Test".to_string()),
                 path: PathBuf::from("/tmp/test-inbox"),
             }],
             destination: DestinationConfig {

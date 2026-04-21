@@ -1,8 +1,10 @@
+use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use argh::FromArgs;
 use crossterm::event::{self, Event, KeyEvent};
+use crossterm::style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor};
 use ratatui::{DefaultTerminal, TerminalOptions, Viewport};
 
 mod app;
@@ -32,15 +34,74 @@ fn main() -> Result<()> {
     let files = inbox::scan_inboxes(&cfg)?;
 
     if files.is_empty() {
-        println!("No files in inbox.");
+        println!("Nothing to sort.");
         return Ok(());
     }
+
+    print_startup_summary(&cfg, &files)?;
 
     let dest_index = dest::DestIndex::new(&cfg.destination.root)?;
 
     let mut app = App::new(files, dest_index, &cfg);
 
     run_event_loop(&mut app)
+}
+
+/// Prints the startup summary to stdout before the TUI launches.
+///
+/// For a single inbox, prints one line; for multiple inboxes, prints a header
+/// followed by one indented line per inbox.
+fn print_startup_summary(cfg: &config::Config, files: &[inbox::InboxFile]) -> Result<()> {
+    let mut stdout = std::io::stdout();
+
+    if cfg.inboxes.len() == 1 {
+        let inbox = &cfg.inboxes[0];
+        let label = config::inbox_label(inbox);
+        let count = files.len();
+        crossterm::execute!(
+            stdout,
+            Print("Sorting "),
+            SetAttribute(Attribute::Bold),
+            Print(label),
+            SetAttribute(Attribute::Reset),
+            Print(" \u{2014} "),
+            SetAttribute(Attribute::Bold),
+            SetForegroundColor(Color::Yellow),
+            Print(count),
+            Print(if count == 1 { " file" } else { " files" }),
+            ResetColor,
+            SetAttribute(Attribute::Reset),
+            Print("\n"),
+        )
+        .context("failed to write startup summary")?;
+    } else {
+        crossterm::execute!(stdout, Print("Sorting:\n"))
+            .context("failed to write startup summary")?;
+
+        for inbox in &cfg.inboxes {
+            let label = config::inbox_label(inbox);
+            let count = files.iter().filter(|f| f.label == label).count();
+            crossterm::execute!(
+                stdout,
+                Print("  "),
+                SetAttribute(Attribute::Bold),
+                Print(label),
+                SetAttribute(Attribute::Reset),
+                Print(" \u{2014} "),
+                SetAttribute(Attribute::Bold),
+                SetForegroundColor(Color::Yellow),
+                Print(count),
+                Print(if count == 1 { " file" } else { " files" }),
+                ResetColor,
+                SetAttribute(Attribute::Reset),
+                Print("\n"),
+            )
+            .context("failed to write startup summary")?;
+        }
+    }
+
+    stdout.flush().context("failed to flush stdout")?;
+    Ok(())
 }
 
 /// Resolves the configuration file path from the CLI option or default search.

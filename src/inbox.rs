@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 
-use crate::config::Config;
+use crate::config::{inbox_label, Config};
 
 /// Represents a single file found in an inbox directory.
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub fn scan_inboxes(config: &Config) -> Result<Vec<InboxFile>> {
             Err(e) => {
                 eprintln!(
                     "warning: skipping inbox '{}' ({}): {}",
-                    inbox.label,
+                    inbox_label(inbox),
                     inbox.path.display(),
                     e
                 );
@@ -41,11 +41,13 @@ pub fn scan_inboxes(config: &Config) -> Result<Vec<InboxFile>> {
             }
         };
 
+        let label = inbox_label(inbox).to_owned();
+
         for entry_result in read_dir {
             let entry = entry_result.with_context(|| {
                 format!(
                     "failed to read entry in inbox '{}' ({})",
-                    inbox.label,
+                    label,
                     inbox.path.display()
                 )
             })?;
@@ -68,7 +70,7 @@ pub fn scan_inboxes(config: &Config) -> Result<Vec<InboxFile>> {
             let filename = entry.file_name().to_string_lossy().into_owned();
 
             files.push(InboxFile {
-                label: inbox.label.clone(),
+                label: label.clone(),
                 path: entry.path(),
                 filename,
                 modified,
@@ -97,7 +99,7 @@ mod tests {
             inboxes: inbox_paths
                 .into_iter()
                 .map(|(label, path)| InboxConfig {
-                    label: label.to_string(),
+                    label: Some(label.to_string()),
                     path: PathBuf::from(path),
                 })
                 .collect(),
