@@ -220,7 +220,7 @@ impl App {
                 self.open_highlighted_file();
                 AppAction::Continue
             }
-            KeyCode::Char('r') => {
+            KeyCode::Char('f') => {
                 self.reveal_highlighted_file_in_finder();
                 AppAction::Continue
             }
@@ -1618,11 +1618,11 @@ mod tests {
     }
 
     #[test]
-    fn browsing_r_returns_continue() {
+    fn browsing_f_returns_continue() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let (mut app, _dir) = make_app_with_files(files);
 
-        let action = app.handle_event(make_key_event(KeyCode::Char('r')));
+        let action = app.handle_event(make_key_event(KeyCode::Char('f')));
         assert_eq!(action, AppAction::Continue);
         assert_eq!(app.state, AppState::Browsing);
     }
@@ -1636,10 +1636,10 @@ mod tests {
     }
 
     #[test]
-    fn browsing_r_with_no_files_returns_continue() {
+    fn browsing_f_with_no_files_returns_continue() {
         let (mut app, _dir) = make_app_with_files(vec![]);
 
-        let action = app.handle_event(make_key_event(KeyCode::Char('r')));
+        let action = app.handle_event(make_key_event(KeyCode::Char('f')));
         assert_eq!(action, AppAction::Continue);
     }
 
