@@ -262,10 +262,17 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(original_label, Style::default().fg(Color::DarkGray)),
         Span::styled(&original_stem, Style::default().fg(Color::DarkGray)),
     ]));
+    let ext_suffix = app
+        .current_file()
+        .and_then(|f| std::path::Path::new(&f.filename).extension())
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+
     lines.push(Line::from(vec![
         Span::styled(new_name_label, Style::default().fg(Color::Cyan)),
         Span::raw(&app.name_input),
         Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
+        Span::styled(ext_suffix, Style::default().fg(HINT_COLOR)),
     ]));
 
     let paragraph = Paragraph::new(lines);
