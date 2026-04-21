@@ -1,1 +1,5 @@
 /target
+.docsort.toml
+.claude/plans/
+.claude/settings.local.json
+.claude/worktrees/
