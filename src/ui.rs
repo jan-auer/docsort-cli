@@ -202,33 +202,42 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
 fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // Top line: file being filed and chosen destination.
-    let filename = app
-        .current_file()
-        .map(|f| f.filename.as_str())
-        .unwrap_or("");
+    // Top line: destination folder.
     let dest_rel = app.selected_dest.as_deref().unwrap_or("");
     lines.push(Line::from(vec![
         Span::styled("\u{2192} ", Style::default().fg(Color::Cyan)),
-        Span::styled(filename, Style::default().fg(Color::Yellow)),
-        Span::styled("  \u{00b7}  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(dest_rel, Style::default().fg(Color::Green)),
+        Span::raw(dest_rel),
     ]));
 
-    // Existing files in the destination directory (alphabetical).
-    let dest_files = app
+    // Existing files in the destination directory (alphabetical), excluding
+    // the file currently being filed (it isn't there yet).
+    let current_filename = app
+        .current_file()
+        .map(|f| f.filename.as_str())
+        .unwrap_or("");
+    let dest_files: Vec<String> = app
         .selected_dest
         .as_deref()
         .and_then(|rel| DestIndex::list_files(&app.dest_root, rel).ok())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|name| name.as_str() != current_filename)
+        .collect();
 
     let available_rows = area.height.saturating_sub(3) as usize; // 1 for header, 2 for input
     let skip_count = dest_files.len().saturating_sub(available_rows);
-    for name in dest_files.iter().skip(skip_count) {
-        lines.push(Line::from(Span::styled(
-            format!(" {name}"),
-            Style::default().fg(Color::DarkGray),
-        )));
+    let visible_files = &dest_files[skip_count..];
+    let last_idx = visible_files.len().saturating_sub(1);
+    for (i, name) in visible_files.iter().enumerate() {
+        let tree_symbol = if i == last_idx {
+            "\u{2514}\u{2500} "
+        } else {
+            "\u{251c}\u{2500} "
+        };
+        lines.push(Line::from(vec![
+            Span::styled(tree_symbol, Style::default().fg(HINT_COLOR)),
+            Span::raw(name.as_str()),
+        ]));
     }
 
     // Pad to push the two input lines to the bottom.
