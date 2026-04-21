@@ -13,7 +13,7 @@ mod inbox;
 mod quicklook;
 mod ui;
 
-use app::{App, AppAction, MAX_LIST_HEIGHT};
+use app::{viewport_height, App, AppAction};
 
 /// A keyboard-driven TUI for sorting documents into an archive.
 #[derive(FromArgs, Debug)]
@@ -54,17 +54,17 @@ fn resolve_config_path(explicit: Option<PathBuf>) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Initializes an inline terminal suitable for the TUI viewport.
-fn init_terminal() -> Result<DefaultTerminal> {
+/// Initializes an inline terminal with a viewport sized to the file list.
+fn init_terminal(file_count: usize) -> Result<DefaultTerminal> {
     let terminal = ratatui::init_with_options(TerminalOptions {
-        viewport: Viewport::Inline(MAX_LIST_HEIGHT),
+        viewport: Viewport::Inline(viewport_height(file_count)),
     });
     Ok(terminal)
 }
 
 /// Runs the main TUI event loop with the commit-and-reinit pattern.
 fn run_event_loop(app: &mut App) -> Result<()> {
-    let mut terminal = init_terminal()?;
+    let mut terminal = init_terminal(app.files.len())?;
 
     loop {
         terminal
@@ -95,7 +95,7 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 println!("\u{2713} {src_name} \u{2192} {dest_display}/{name}");
 
                 // Reinitialize the terminal.
-                terminal = init_terminal()?;
+                terminal = init_terminal(app.files.len())?;
             }
             AppAction::Quit => {
                 drop(terminal);

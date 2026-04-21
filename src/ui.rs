@@ -6,11 +6,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::app::{App, AppState, MAX_LIST_HEIGHT};
+use crate::app::{App, AppState};
 use crate::dest::DestIndex;
-
-/// Number of content rows available (total viewport minus the hint bar).
-const CONTENT_ROWS: u16 = MAX_LIST_HEIGHT - 1;
 
 /// Renders the entire TUI frame based on the current application state.
 pub fn render(frame: &mut Frame, app: &App) {
@@ -18,7 +15,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(CONTENT_ROWS), Constraint::Length(1)])
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(area);
 
     let content_area = chunks[0];
