@@ -222,7 +222,7 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         .and_then(|rel| DestIndex::list_files(&app.dest_root, rel).ok())
         .unwrap_or_default();
 
-    let available_rows = area.height.saturating_sub(2) as usize; // 1 for header, 1 for input
+    let available_rows = area.height.saturating_sub(3) as usize; // 1 for header, 2 for input
     let skip_count = dest_files.len().saturating_sub(available_rows);
     for name in dest_files.iter().skip(skip_count) {
         lines.push(Line::from(Span::styled(
@@ -231,26 +231,15 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         )));
     }
 
-    // Pad to push the input line to the bottom.
+    // Pad to push the two input lines to the bottom.
     let used_rows = lines.len();
     let total_rows = area.height as usize;
-    if used_rows + 1 < total_rows {
-        let padding = total_rows - used_rows - 1;
+    if used_rows + 2 < total_rows {
+        let padding = total_rows - used_rows - 2;
         for _ in 0..padding {
             lines.push(Line::from(""));
         }
     }
-
-    // Input line with extension hint.
-    let ext = app
-        .current_file()
-        .map(|f| {
-            std::path::Path::new(&f.filename)
-                .extension()
-                .map(|e| format!("  [.{}]", e.to_string_lossy()))
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
 
     let original_stem = app
         .current_file()
@@ -262,11 +251,19 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         })
         .unwrap_or_default();
 
+    // Align label values to the same column: pad both labels to the same width.
+    let label_original = "Original:";
+    let label_new = "New name:";
+    let label_width = label_original.len().max(label_new.len());
+    let original_label = format!("{:<width$}  ", label_original, width = label_width);
+    let new_name_label = format!("{:<width$}  ", label_new, width = label_width);
+
     lines.push(Line::from(vec![
-        Span::styled("Original: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(original_label, Style::default().fg(Color::DarkGray)),
         Span::styled(&original_stem, Style::default().fg(Color::DarkGray)),
-        Span::styled(&ext, Style::default().fg(Color::DarkGray)),
-        Span::styled("  New name: ", Style::default().fg(Color::Cyan)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(new_name_label, Style::default().fg(Color::Cyan)),
         Span::raw(&app.name_input),
         Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
     ]));
