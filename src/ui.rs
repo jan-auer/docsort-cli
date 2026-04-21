@@ -170,17 +170,24 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
             .chars()
             .take(app.search_input_pos)
             .collect();
+        let cursor_char: Option<char> = app.search_query.chars().nth(app.search_input_pos);
         let after: String = app
             .search_query
             .chars()
-            .skip(app.search_input_pos)
+            .skip(app.search_input_pos + 1)
             .collect();
-        vec![
-            Span::styled("> ", Style::default().fg(Color::Cyan)),
-            Span::raw(before),
-            Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
-            Span::raw(after),
-        ]
+        let mut spans = vec![Span::styled("> ", Style::default().fg(Color::Cyan))];
+        spans.push(Span::raw(before));
+        if let Some(ch) = cursor_char {
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default().add_modifier(Modifier::REVERSED),
+            ));
+        } else {
+            spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
+        }
+        spans.push(Span::raw(after));
+        spans
     };
 
     let input_paragraph = Paragraph::new(Line::from(input_spans));
@@ -243,17 +250,27 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
             .chars()
             .take(app.search_input_pos)
             .collect();
+        let cursor_char: Option<char> = app.search_query.chars().nth(app.search_input_pos);
         let after: String = app
             .search_query
             .chars()
-            .skip(app.search_input_pos)
+            .skip(app.search_input_pos + 1)
             .collect();
-        vec![
-            Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
-            Span::raw(before),
-            Span::styled("\u{2588}", Style::default().fg(Color::Magenta)),
-            Span::raw(after),
-        ]
+        let mut spans = vec![Span::styled(
+            "New folder: ",
+            Style::default().fg(Color::Magenta),
+        )];
+        spans.push(Span::raw(before));
+        if let Some(ch) = cursor_char {
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default().add_modifier(Modifier::REVERSED),
+            ));
+        } else {
+            spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
+        }
+        spans.push(Span::raw(after));
+        spans
     };
 
     let input_paragraph = Paragraph::new(Line::from(folder_input_spans));
@@ -344,13 +361,26 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
     ]));
 
     let name_before: String = app.name_input.chars().take(app.name_input_pos).collect();
-    let name_after: String = app.name_input.chars().skip(app.name_input_pos).collect();
-    let mut new_name_spans = vec![
-        Span::styled(new_name_label, Style::default().fg(Color::Cyan)),
-        Span::raw(name_before),
-        Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
-        Span::raw(name_after),
-    ];
+    let cursor_char: Option<char> = app.name_input.chars().nth(app.name_input_pos);
+    let name_after: String = app
+        .name_input
+        .chars()
+        .skip(app.name_input_pos + 1)
+        .collect();
+    let mut new_name_spans = vec![Span::styled(
+        new_name_label,
+        Style::default().fg(Color::Cyan),
+    )];
+    new_name_spans.push(Span::raw(name_before));
+    if let Some(ch) = cursor_char {
+        new_name_spans.push(Span::styled(
+            ch.to_string(),
+            Style::default().add_modifier(Modifier::REVERSED),
+        ));
+    } else {
+        new_name_spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
+    }
+    new_name_spans.push(Span::raw(name_after));
     if app.name_input.is_empty() {
         if !ext_suffix.is_empty() {
             new_name_spans.push(Span::styled("<keep>", Style::default().fg(HINT_COLOR)));
