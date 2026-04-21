@@ -45,6 +45,21 @@ impl DestIndex {
         scored.into_iter().map(|(s, _)| s).collect()
     }
 
+    /// Returns the immediate children of the destination root in alphabetical order.
+    ///
+    /// Filters `self.dirs` for entries that contain no `/` separator (i.e. depth-1
+    /// subdirectories), then sorts them alphabetically.
+    pub fn top_level_dirs(&self) -> Vec<String> {
+        let mut result: Vec<String> = self
+            .dirs
+            .iter()
+            .filter(|d| !d.contains('/'))
+            .cloned()
+            .collect();
+        result.sort();
+        result
+    }
+
     /// Re-walks `root` and rebuilds the index in place.
     ///
     /// Call this after creating a new subdirectory in the destination tree.
@@ -166,6 +181,24 @@ mod tests {
         let index = DestIndex::new(dir.path()).unwrap();
         let results = index.query("");
         assert_eq!(results.len(), index.dirs.len());
+    }
+
+    #[test]
+    fn top_level_dirs_returns_only_depth_one_dirs_sorted() {
+        let dir = TempDir::new().unwrap();
+        setup_tree(dir.path());
+
+        let index = DestIndex::new(dir.path()).unwrap();
+        let top = index.top_level_dirs();
+        // Only "alpha" and "gamma" are at depth 1; "alpha/beta" must not appear.
+        assert_eq!(top, vec!["alpha", "gamma"]);
+    }
+
+    #[test]
+    fn top_level_dirs_empty_when_no_subdirs() {
+        let dir = TempDir::new().unwrap();
+        let index = DestIndex::new(dir.path()).unwrap();
+        assert!(index.top_level_dirs().is_empty());
     }
 
     #[test]

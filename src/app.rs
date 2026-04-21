@@ -359,7 +359,7 @@ impl App {
         self.search_query.clear();
         self.search_cursor = 0;
         if self.dest_history.is_empty() {
-            self.search_results.clear();
+            self.search_results = self.dest_index.top_level_dirs();
         } else {
             self.search_results = self.dest_history.clone();
         }
@@ -560,7 +560,11 @@ impl App {
     /// When the query is non-empty, runs a fuzzy search across all folders.
     fn update_search_results(&mut self) {
         if self.search_query.is_empty() {
-            self.search_results = self.dest_history.clone();
+            self.search_results = if self.dest_history.is_empty() {
+                self.dest_index.top_level_dirs()
+            } else {
+                self.dest_history.clone()
+            };
             self.search_cursor = 0;
         } else {
             self.search_results = self.dest_index.query(&self.search_query);
@@ -1235,13 +1239,25 @@ mod tests {
     }
 
     #[test]
-    fn enter_searching_without_history_leaves_results_empty() {
+    fn enter_searching_without_history_shows_top_level_dirs() {
         let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
         let mut app = make_app_with_files(files);
 
         app.handle_event(make_key_event(KeyCode::Enter));
         assert_eq!(app.state, AppState::Searching);
-        assert!(app.search_results.is_empty());
+        // make_app_with_files creates "alpha" and "beta" at the root level.
+        assert_eq!(app.search_results, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn update_search_results_empty_query_empty_history_uses_top_level_dirs() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        // dest_history is empty by default; make_app_with_files creates "alpha" and "beta".
+
+        app.update_search_results();
+        assert_eq!(app.search_results, vec!["alpha", "beta"]);
+        assert_eq!(app.search_cursor, 0);
     }
 
     #[test]
