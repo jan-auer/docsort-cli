@@ -337,6 +337,10 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Renders file names present in the currently highlighted destination directory.
+///
+/// The pane always fills its full allocated height; rows below the last file
+/// are left blank. File names use the same style as non-highlighted entries in
+/// the left fuzzy results list.
 fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
     let selected = app.search_results.get(app.search_cursor);
     let files = selected
@@ -344,16 +348,16 @@ fn render_dest_files(frame: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_default();
 
     let visible_rows = area.height as usize;
-    let lines: Vec<Line> = files
+    let mut lines: Vec<Line> = files
         .iter()
         .take(visible_rows)
-        .map(|name| {
-            Line::from(Span::styled(
-                format!("\u{2502} {name}"),
-                Style::default().fg(Color::DarkGray),
-            ))
-        })
+        .map(|name| Line::from(Span::styled(format!("\u{2502} {name}"), Style::default())))
         .collect();
+
+    // Pad with blank lines so the widget spans the full allocated height.
+    while lines.len() < visible_rows {
+        lines.push(Line::from(""));
+    }
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, area);
