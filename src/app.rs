@@ -18,10 +18,11 @@ const MIN_VIEWPORT_HEIGHT: u16 = 4;
 
 /// Computes the inline viewport height for a given number of inbox files.
 ///
-/// Returns `min(MAX_LIST_HEIGHT, max(MIN_VIEWPORT_HEIGHT, files + 2))` where
-/// the `+2` accounts for one separator line and one hint bar line.
+/// Returns `min(MAX_LIST_HEIGHT, max(MIN_VIEWPORT_HEIGHT, files + 3))` where
+/// the `+3` accounts for one top separator, one bottom separator, and one hint
+/// bar line.
 pub fn viewport_height(file_count: usize) -> u16 {
-    let needed = (file_count as u16).saturating_add(2);
+    let needed = (file_count as u16).saturating_add(3);
     needed.clamp(MIN_VIEWPORT_HEIGHT, MAX_LIST_HEIGHT)
 }
 
@@ -531,8 +532,8 @@ mod tests {
 
     #[test]
     fn viewport_height_few_files_uses_content_size() {
-        // 3 files → 3 + 2 = 5, which is above MIN and below MAX.
-        assert_eq!(viewport_height(3), 5);
+        // 3 files → 3 + 3 = 6, which is above MIN and below MAX.
+        assert_eq!(viewport_height(3), 6);
     }
 
     #[test]
@@ -548,7 +549,7 @@ mod tests {
 
     #[test]
     fn viewport_height_just_below_min() {
-        // 1 file → 1 + 2 = 3, below MIN_VIEWPORT_HEIGHT (4) → clamped to 4.
+        // 1 file → 1 + 3 = 4, equals MIN_VIEWPORT_HEIGHT → clamped to 4.
         assert_eq!(viewport_height(1), MIN_VIEWPORT_HEIGHT);
     }
 

@@ -14,15 +14,19 @@ pub fn render(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Min(1),
             Constraint::Length(1),
             Constraint::Length(1),
         ])
         .split(area);
 
-    let content_area = chunks[0];
-    let separator_area = chunks[1];
-    let hint_area = chunks[2];
+    let top_separator_area = chunks[0];
+    let content_area = chunks[1];
+    let separator_area = chunks[2];
+    let hint_area = chunks[3];
+
+    render_separator(frame, top_separator_area);
 
     match app.state {
         AppState::Browsing => render_browsing(frame, app, content_area),
@@ -89,9 +93,7 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
             spans.push(Span::raw("  "));
             spans.push(check);
         } else if is_highlighted {
-            let row_style = Style::default()
-                .add_modifier(Modifier::BOLD)
-                .bg(Color::DarkGray);
+            let row_style = Style::default().add_modifier(Modifier::BOLD);
             let label_style = Style::default()
                 .add_modifier(Modifier::BOLD)
                 .fg(Color::White)
@@ -135,9 +137,7 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
         let is_highlighted = i == app.search_cursor;
         let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
         let style = if is_highlighted {
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .bg(Color::DarkGray)
+            Style::default().add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
@@ -178,9 +178,7 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
         let is_highlighted = i == app.search_cursor;
         let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
         let style = if is_highlighted {
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .bg(Color::DarkGray)
+            Style::default().add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
@@ -282,16 +280,19 @@ fn render_separator(frame: &mut Frame, area: Rect) {
     let line = "\u{2500}".repeat(area.width as usize);
     let paragraph = Paragraph::new(Line::from(Span::styled(
         line,
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(HINT_COLOR),
     )));
     frame.render_widget(paragraph, area);
 }
+
+/// Muted mid-grey used for hint bar text and separators.
+const HINT_COLOR: Color = Color::Rgb(128, 128, 128);
 
 /// Renders the hint bar at the bottom of the viewport.
 fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
     let line = if let Some(ref err) = app.error_message {
         let color = if app.ctrl_c_hint {
-            Color::DarkGray
+            HINT_COLOR
         } else {
             Color::Red
         };
@@ -305,7 +306,7 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
         };
         Line::from(Span::styled(
             hints.to_string(),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(HINT_COLOR),
         ))
     };
 
