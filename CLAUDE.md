@@ -11,6 +11,8 @@ When spawning agents, choose the model appropriate to the task:
 - **Sonnet**: standard implementation, refactoring, moderate reasoning
 - **Opus**: complex architecture, deep reasoning, critical decisions
 
+Even for independent tasks, spawn agents serially (one after another), not in parallel. The project is small enough that concurrent agents risk conflicting edits and git conflicts.
+
 ## Toolchain
 
 - Rust: latest stable
