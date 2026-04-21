@@ -11,7 +11,7 @@ When spawning agents, choose the model appropriate to the task:
 - **Sonnet**: standard implementation, refactoring, moderate reasoning
 - **Opus**: complex architecture, deep reasoning, critical decisions
 
-Even for independent tasks, spawn agents serially (one after another), not in parallel. The project is small enough that concurrent agents risk conflicting edits and git conflicts.
+Spawn one agent per independent concern — keep each agent's context small and focused on a surgical change. Run agents serially (one after another), not in parallel — concurrent agents risk conflicting edits and git conflicts. When a batch of changes contains independent concerns (e.g. Ctrl+C behaviour vs. rendering vs. layout), split them into separate agents rather than bundling into one.
 
 ## Toolchain
 

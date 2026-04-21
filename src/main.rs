@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use argh::FromArgs;
@@ -39,6 +40,7 @@ fn main() -> Result<()> {
     }
 
     print_startup_summary(&cfg, &files)?;
+    print_separator()?;
 
     let dest_index = dest::DestIndex::new(&cfg.destination.root)?;
 
@@ -132,6 +134,14 @@ fn run_event_loop(app: &mut App) -> Result<()> {
             .draw(|frame| ui::render(frame, app))
             .context("failed to draw frame")?;
 
+        app.tick();
+
+        let has_event =
+            event::poll(Duration::from_millis(100)).context("failed to poll terminal events")?;
+        if !has_event {
+            continue;
+        }
+
         let key_event = read_key_event()?;
         let Some(key) = key_event else {
             continue;
@@ -154,6 +164,7 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                     .map(|p| p.to_string_lossy().into_owned())
                     .unwrap_or_else(|| dest.to_string_lossy().into_owned());
                 println!("\u{2713} {src_name} \u{2192} {dest_display}/{name}");
+                print_separator()?;
 
                 // Reinitialize the terminal.
                 terminal = init_terminal(app.files.len())?;
@@ -167,9 +178,10 @@ fn run_event_loop(app: &mut App) -> Result<()> {
     }
 }
 
-/// Reads the next key event from crossterm, blocking until one arrives.
+/// Reads the next available key event from crossterm.
 ///
-/// Returns `None` for non-key events (mouse, resize, focus, paste).
+/// Must only be called after a successful `event::poll`. Returns `None` for
+/// non-key events (mouse, resize, focus, paste).
 fn read_key_event() -> Result<Option<KeyEvent>> {
     let event = event::read().context("failed to read terminal event")?;
     match event {
@@ -180,4 +192,14 @@ fn read_key_event() -> Result<Option<KeyEvent>> {
         | Event::Paste(_)
         | Event::Resize(_, _) => Ok(None),
     }
+}
+
+/// Prints a separator line to stdout so it enters the scroll buffer as a
+/// permanent line above the inline TUI.
+fn print_separator() -> Result<()> {
+    let mut stdout = std::io::stdout();
+    crossterm::execute!(stdout, Print("\u{2500}".repeat(48)), Print("\n"))
+        .context("failed to write separator")?;
+    stdout.flush().context("failed to flush stdout")?;
+    Ok(())
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
@@ -84,6 +84,9 @@ pub struct App {
     pub last_ctrl_c: Option<Instant>,
     /// Error message to display in the hint bar.
     pub error_message: Option<String>,
+    /// When `true`, the hint bar message is a soft hint (rendered in gray)
+    /// rather than a real error (rendered in red).
+    pub ctrl_c_hint: bool,
     /// Root path of the destination archive.
     pub dest_root: PathBuf,
     /// The destination path chosen in Searching mode, carried into Naming.
@@ -107,8 +110,24 @@ impl App {
             name_input: String::new(),
             last_ctrl_c: None,
             error_message: None,
+            ctrl_c_hint: false,
             dest_root: config.destination.root.clone(),
             selected_dest: None,
+        }
+    }
+
+    /// Called on every event-loop tick (whether or not a key arrived).
+    ///
+    /// Clears the Ctrl+C hint and error message once the 1-second window expires.
+    pub fn tick(&mut self) {
+        let hint_expired = self
+            .last_ctrl_c
+            .map(|t| t.elapsed() >= Duration::from_secs(1))
+            .unwrap_or(false);
+        if hint_expired {
+            self.last_ctrl_c = None;
+            self.error_message = None;
+            self.ctrl_c_hint = false;
         }
     }
 
@@ -146,6 +165,7 @@ impl App {
         }
         self.last_ctrl_c = Some(Instant::now());
         self.error_message = Some("Press Ctrl+C again to quit".to_string());
+        self.ctrl_c_hint = true;
         AppAction::Continue
     }
 

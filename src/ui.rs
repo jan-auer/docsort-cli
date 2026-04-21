@@ -1,7 +1,5 @@
-use std::time::SystemTime;
-
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -31,10 +29,33 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_hint_bar(frame, app, hint_area);
 }
 
+/// Palette of background colors for inbox labels. Cycled by inbox index.
+const LABEL_PALETTE: &[Color] = &[Color::Blue, Color::Green, Color::Magenta, Color::Cyan];
+
+/// Builds the ordered list of unique inbox labels from the file list, in
+/// first-appearance order.
+fn unique_labels(files: &[crate::inbox::InboxFile]) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for file in files {
+        if !seen.contains(&file.label) {
+            seen.push(file.label.clone());
+        }
+    }
+    seen
+}
+
+/// Returns the background color for an inbox label by its position in the
+/// unique-label list.
+fn label_color(label_index: usize) -> Color {
+    LABEL_PALETTE[label_index % LABEL_PALETTE.len()]
+}
+
 /// Renders the file browser list in Browsing mode.
 fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
     let visible_rows = area.height as usize;
     let (start, end) = visible_window(app.cursor, app.files.len(), visible_rows);
+
+    let labels = unique_labels(&app.files);
 
     let mut lines: Vec<Line> = Vec::new();
     for i in start..end {
@@ -43,9 +64,11 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
         let is_moved = app.moved.contains_key(&file.path);
 
         let prefix = if is_highlighted { "\u{25b6}" } else { " " };
-        let label = format!("[{}]", file.label);
-        let date = format_system_time(&file.modified);
+        let label_text = format!("[{}]", file.label);
         let filename = &file.filename;
+
+        let label_index = labels.iter().position(|l| *l == file.label).unwrap_or(0);
+        let bg = label_color(label_index);
 
         let mut spans: Vec<Span> = Vec::new();
 
@@ -54,21 +77,26 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
             let dim = Style::default().fg(Color::DarkGray);
             let check = Span::styled("\u{2713} ", Style::default().fg(Color::Green));
             spans.push(Span::styled(prefix.to_string(), dim));
-            spans.push(Span::styled(format!("{label:<10}"), dim));
-            spans.push(Span::styled(format!("{date}  "), dim));
+            spans.push(Span::styled(format!("{label_text} "), dim));
             spans.push(Span::styled(filename.to_string(), dim));
             spans.push(Span::raw("  "));
             spans.push(check);
+        } else if is_highlighted {
+            let row_style = Style::default()
+                .add_modifier(Modifier::BOLD)
+                .bg(Color::DarkGray);
+            let label_style = Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Black)
+                .bg(bg);
+            spans.push(Span::styled(prefix.to_string(), row_style));
+            spans.push(Span::styled(format!("{label_text} "), label_style));
+            spans.push(Span::styled(filename.to_string(), row_style));
         } else {
-            let style = if is_highlighted {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
-            };
-            spans.push(Span::styled(prefix.to_string(), style));
-            spans.push(Span::styled(format!("{label:<10}"), style));
-            spans.push(Span::styled(format!("{date}  "), style));
-            spans.push(Span::styled(filename.to_string(), style));
+            let label_style = Style::default().fg(Color::Black).bg(bg);
+            spans.push(Span::raw(prefix.to_string()));
+            spans.push(Span::styled(format!("{label_text} "), label_style));
+            spans.push(Span::raw(filename.to_string()));
         };
 
         lines.push(Line::from(spans));
@@ -98,7 +126,9 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
         let is_highlighted = i == app.search_cursor;
         let prefix = if is_highlighted { "\u{25b6}" } else { " " };
         let style = if is_highlighted {
-            Style::default().fg(Color::Yellow)
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .bg(Color::DarkGray)
         } else {
             Style::default()
         };
@@ -139,7 +169,9 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
         let is_highlighted = i == app.search_cursor;
         let prefix = if is_highlighted { "\u{25b6}" } else { " " };
         let style = if is_highlighted {
-            Style::default().fg(Color::Yellow)
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .bg(Color::DarkGray)
         } else {
             Style::default()
         };
@@ -239,7 +271,12 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
 /// Renders the hint bar at the bottom of the viewport.
 fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
     let line = if let Some(ref err) = app.error_message {
-        Line::from(Span::styled(err.as_str(), Style::default().fg(Color::Red)))
+        let color = if app.ctrl_c_hint {
+            Color::DarkGray
+        } else {
+            Color::Red
+        };
+        Line::from(Span::styled(err.as_str(), Style::default().fg(color)))
     } else {
         let hints = match app.state {
             AppState::Browsing => "\u{2191}\u{2193} navigate  Enter file  Space preview  ^C quit",
@@ -293,12 +330,6 @@ fn visible_window(cursor: usize, total: usize, visible_rows: usize) -> (usize, u
     (start, end_exclusive)
 }
 
-/// Formats a `SystemTime` as `YYYY-MM-DD`.
-fn format_system_time(time: &SystemTime) -> String {
-    let datetime: chrono::DateTime<chrono::Local> = (*time).into();
-    datetime.format("%Y-%m-%d").to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,15 +368,5 @@ mod tests {
         // start = 10-10 = 0
         assert_eq!(start, 0);
         assert_eq!(end, 10);
-    }
-
-    #[test]
-    fn format_system_time_produces_date_string() {
-        let now = SystemTime::now();
-        let result = format_system_time(&now);
-        // Should be YYYY-MM-DD format.
-        assert_eq!(result.len(), 10);
-        assert_eq!(&result[4..5], "-");
-        assert_eq!(&result[7..8], "-");
     }
 }
