@@ -1,4 +1,4 @@
-# docsort2
+# docsort
 
 A single-crate Rust CLI application.
 

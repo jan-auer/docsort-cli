@@ -1,11 +1,11 @@
-# docsort2
+# docsort
 
 A keyboard-driven TUI for filing documents from inbox folders into an organised archive, without leaving the terminal.
 
 ## Install
 
 ```
-cargo install docsort2
+cargo install docsort
 ```
 
 ## Config
@@ -25,7 +25,7 @@ Multiple `[[inboxes]]` entries are supported. The `label` field is optional and 
 
 ## Usage
 
-Launch `docsort2` from any directory where a `.docsort.toml` is present (or from home if one lives there). The TUI opens inline — your scroll history stays intact above it.
+Launch `docsort` from any directory where a `.docsort.toml` is present (or from home if one lives there). The TUI opens inline — your scroll history stays intact above it.
 
 **Browse mode** — all inbox files are listed newest-first, with their inbox label and modification date. Use `↑`/`↓` to navigate. Press `Space` to open a Quick Look preview of the highlighted file in a floating macOS window; press `Space` again to close it.
 
