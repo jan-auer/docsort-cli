@@ -30,6 +30,12 @@ fn main() -> Result<()> {
     let cfg = config::load_config(&config_path)?;
 
     let files = inbox::scan_inboxes(&cfg)?;
+
+    if files.is_empty() {
+        println!("No files in inbox.");
+        return Ok(());
+    }
+
     let dest_index = dest::DestIndex::new(&cfg.destination.root)?;
 
     let mut app = App::new(files, dest_index, &cfg);
