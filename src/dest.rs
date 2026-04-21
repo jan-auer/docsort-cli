@@ -105,7 +105,11 @@ impl DestIndex {
 fn collect_subdirs(root: &Path) -> Result<Vec<String>> {
     let mut dirs: Vec<String> = Vec::new();
 
-    for entry_result in WalkDir::new(root).min_depth(1).into_iter() {
+    for entry_result in WalkDir::new(root)
+        .min_depth(1)
+        .into_iter()
+        .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
+    {
         let entry = entry_result
             .with_context(|| format!("failed to walk directory: {}", root.display()))?;
 
@@ -125,15 +129,6 @@ fn collect_subdirs(root: &Path) -> Result<Vec<String>> {
             })?
             .to_string_lossy()
             .into_owned();
-
-        // Skip if any path component starts with a dot (hidden directory).
-        let path = Path::new(&rel);
-        if path
-            .components()
-            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
-        {
-            continue;
-        }
 
         dirs.push(rel);
     }
