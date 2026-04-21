@@ -201,6 +201,7 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 terminal = init_terminal(current_height)?;
             }
             AppAction::Quit => {
+                clear_viewport(current_height)?;
                 drop(terminal);
                 crossterm::terminal::disable_raw_mode().context("failed to disable raw mode")?;
                 crossterm::execute!(std::io::stdout(), crossterm::cursor::Show)
