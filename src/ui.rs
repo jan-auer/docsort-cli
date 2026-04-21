@@ -147,11 +147,19 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     // Input line at the bottom of the left pane.
-    lines.push(Line::from(vec![
-        Span::styled("> ", Style::default().fg(Color::Cyan)),
-        Span::raw(&app.search_query),
-        Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
-    ]));
+    let input_spans = if app.search_query.is_empty() {
+        vec![
+            Span::styled("> ", Style::default().fg(Color::Cyan)),
+            Span::styled("type to search", Style::default().fg(HINT_COLOR)),
+        ]
+    } else {
+        vec![
+            Span::styled("> ", Style::default().fg(Color::Cyan)),
+            Span::raw(&app.search_query),
+            Span::styled("\u{2588}", Style::default().fg(Color::Cyan)),
+        ]
+    };
+    lines.push(Line::from(input_spans));
 
     let left_paragraph = Paragraph::new(lines);
     frame.render_widget(left_paragraph, left_inner);
@@ -190,11 +198,19 @@ fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     // Folder name input line.
-    lines.push(Line::from(vec![
-        Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
-        Span::raw(&app.search_query),
-        Span::styled("\u{2588}", Style::default().fg(Color::Magenta)),
-    ]));
+    let folder_input_spans = if app.search_query.is_empty() {
+        vec![
+            Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
+            Span::styled("type to search", Style::default().fg(HINT_COLOR)),
+        ]
+    } else {
+        vec![
+            Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
+            Span::raw(&app.search_query),
+            Span::styled("\u{2588}", Style::default().fg(Color::Magenta)),
+        ]
+    };
+    lines.push(Line::from(folder_input_spans));
 
     let left_paragraph = Paragraph::new(lines);
     frame.render_widget(left_paragraph, left_inner);
