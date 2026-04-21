@@ -27,7 +27,7 @@ Multiple `[[inboxes]]` entries are supported. The `label` field is optional and 
 
 Launch `docsort` from any directory where a `.docsort.toml` is present (or from home if one lives there). The TUI opens inline — your scroll history stays intact above it.
 
-**Browse mode** — all inbox files are listed newest-first, with their inbox label and modification date. Use `↑`/`↓` to navigate. Press `Space` to open a Quick Look preview of the highlighted file in a floating macOS window; press `Space` again to close it.
+**Browse mode** — all inbox files are listed newest-first by modification date. Use `↑`/`↓` to navigate. Press `Space` to open a Quick Look preview of the highlighted file in a floating macOS window; press `Space` again to close it.
 
 **Filing a file** — press `↵` on any file to start filing it. The inline area redraws with a fuzzy destination search. Your most recently used folders appear at the top; type to search all folders under the archive root by full path.
 
