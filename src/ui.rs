@@ -459,7 +459,7 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
         match app.state {
             AppState::Browsing => {
                 let text = if app.current_file_is_moved() {
-                    "\u{2191}\u{2193} navigate  \u{21b5} file  ^Space preview  ^O open  ^R finder  ^C quit"
+                    "\u{2191}\u{2193} navigate  \u{21b5} file  u undo  ^Space preview  ^O open  ^R finder  ^C quit"
                 } else {
                     "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  ^Space preview  ^O open  ^R finder  ^C quit"
                 };

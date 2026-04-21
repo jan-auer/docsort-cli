@@ -232,6 +232,10 @@ impl App {
                 self.enter_confirm_delete();
                 AppAction::Continue
             }
+            KeyCode::Char('u') => {
+                self.undo_move();
+                AppAction::Continue
+            }
             _ => AppAction::Continue,
         }
     }
@@ -603,6 +607,46 @@ impl App {
             }
         }
         self.state = AppState::ConfirmDelete;
+    }
+
+    /// Moves the currently highlighted file back to its original inbox path.
+    ///
+    /// Only acts when the current file has been moved this session. If the
+    /// original path already exists, sets an error message and does nothing.
+    fn undo_move(&mut self) {
+        let Some(file) = self.files.get(self.cursor) else {
+            return;
+        };
+        let original_path = file.path.clone();
+        let Some(current_path) = self.moved.get(&original_path).cloned() else {
+            // File hasn't been moved; nothing to undo.
+            return;
+        };
+
+        if original_path.exists() {
+            self.error_message = Some(format!(
+                "Cannot undo: {} already exists",
+                original_path.display()
+            ));
+            return;
+        }
+
+        match file_ops::move_file(
+            &current_path,
+            original_path.parent().unwrap_or(&original_path),
+            original_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .as_str(),
+        ) {
+            Ok(_) => {
+                self.moved.remove(&original_path);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Undo failed: {e}"));
+            }
+        }
     }
 
     /// Handles key events in ConfirmDelete mode.
@@ -1672,6 +1716,85 @@ mod tests {
             PathBuf::from("/archive/doc.pdf"),
         );
         assert!(app.current_file_is_moved());
+    }
+
+    #[test]
+    fn undo_move_restores_file_to_original_location() {
+        let src_dir = tempfile::TempDir::new().unwrap();
+        let dest_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        let dest_path = dest_dir.path().join("doc.pdf");
+
+        // Simulate a previously completed move: file is now at dest_path.
+        std::fs::write(&dest_path, b"content").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+        app.moved.insert(src_path.clone(), dest_path.clone());
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('u')));
+        assert_eq!(action, AppAction::Continue);
+        // The moved entry must be removed.
+        assert!(!app.moved.contains_key(&src_path));
+        // File must be back at original path.
+        assert!(src_path.exists());
+        assert!(!dest_path.exists());
+    }
+
+    #[test]
+    fn undo_move_on_unmoved_file_does_nothing() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('u')));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Browsing);
+        assert!(app.moved.is_empty());
+    }
+
+    #[test]
+    fn undo_move_shows_error_when_original_path_exists() {
+        let src_dir = tempfile::TempDir::new().unwrap();
+        let dest_dir = tempfile::TempDir::new().unwrap();
+
+        let src_path = src_dir.path().join("doc.pdf");
+        let dest_path = dest_dir.path().join("doc.pdf");
+
+        // Both paths exist — conflict situation.
+        std::fs::write(&src_path, b"original").unwrap();
+        std::fs::write(&dest_path, b"moved").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: src_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+        }];
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+        app.moved.insert(src_path.clone(), dest_path.clone());
+
+        app.handle_event(make_key_event(KeyCode::Char('u')));
+        // Error message should be set.
+        assert!(app.error_message.is_some());
+        // Moved entry must remain; no undo performed.
+        assert!(app.moved.contains_key(&src_path));
+        // Both files must still exist untouched.
+        assert!(src_path.exists());
+        assert!(dest_path.exists());
     }
 
     #[test]
