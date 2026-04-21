@@ -591,9 +591,16 @@ impl App {
     }
 
     /// Transitions from Browsing to ConfirmDelete mode for the highlighted file.
+    ///
+    /// Does nothing when the highlighted file has already been moved this session.
     fn enter_confirm_delete(&mut self) {
         if self.files.is_empty() {
             return;
+        }
+        if let Some(file) = self.files.get(self.cursor) {
+            if self.moved.contains_key(&file.path) {
+                return;
+            }
         }
         self.state = AppState::ConfirmDelete;
     }
@@ -816,6 +823,14 @@ impl App {
     /// Returns the currently highlighted file, if any.
     pub fn current_file(&self) -> Option<&InboxFile> {
         self.files.get(self.cursor)
+    }
+
+    /// Returns `true` if the currently highlighted file has been moved this session.
+    pub fn current_file_is_moved(&self) -> bool {
+        self.files
+            .get(self.cursor)
+            .map(|f| self.moved.contains_key(&f.path))
+            .unwrap_or(false)
     }
 
     /// Returns the desired inline viewport height for the current state.
@@ -1612,6 +1627,51 @@ mod tests {
 
         let action = app.handle_event(make_ctrl_key_event(KeyCode::Char('r')));
         assert_eq!(action, AppAction::Continue);
+    }
+
+    #[test]
+    fn delete_on_unmoved_file_enters_confirm_delete() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('d')));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::ConfirmDelete);
+    }
+
+    #[test]
+    fn delete_on_moved_file_stays_browsing() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+
+        // Mark the file as moved.
+        app.moved.insert(
+            PathBuf::from("/tmp/doc.pdf"),
+            PathBuf::from("/archive/doc.pdf"),
+        );
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('d')));
+        assert_eq!(action, AppAction::Continue);
+        // Must stay in Browsing — delete not allowed on moved files.
+        assert_eq!(app.state, AppState::Browsing);
+    }
+
+    #[test]
+    fn current_file_is_moved_returns_false_for_unmoved_file() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let app = make_app_with_files(files);
+        assert!(!app.current_file_is_moved());
+    }
+
+    #[test]
+    fn current_file_is_moved_returns_true_for_moved_file() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.moved.insert(
+            PathBuf::from("/tmp/doc.pdf"),
+            PathBuf::from("/archive/doc.pdf"),
+        );
+        assert!(app.current_file_is_moved());
     }
 
     #[test]

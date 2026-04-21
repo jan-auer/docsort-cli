@@ -457,10 +457,14 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(Span::styled(err.as_str(), Style::default().fg(color)))
     } else {
         match app.state {
-            AppState::Browsing => Line::from(Span::styled(
-                "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  ^Space preview  ^O open  ^R finder  ^C quit",
-                Style::default().fg(HINT_COLOR),
-            )),
+            AppState::Browsing => {
+                let text = if app.current_file_is_moved() {
+                    "\u{2191}\u{2193} navigate  \u{21b5} file  ^Space preview  ^O open  ^R finder  ^C quit"
+                } else {
+                    "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  ^Space preview  ^O open  ^R finder  ^C quit"
+                };
+                Line::from(Span::styled(text, Style::default().fg(HINT_COLOR)))
+            }
             AppState::ConfirmDelete => Line::from(Span::styled(
                 "delete? [y/N]",
                 Style::default().fg(Color::Red),
