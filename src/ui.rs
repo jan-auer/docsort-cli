@@ -274,8 +274,8 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
         .unwrap_or_default();
 
     lines.push(Line::from(vec![
-        Span::styled(original_label, Style::default().fg(Color::DarkGray)),
-        Span::styled(&original_stem, Style::default().fg(Color::DarkGray)),
+        Span::styled(original_label, Style::default()),
+        Span::styled(&original_stem, Style::default()),
         Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)),
     ]));
 
