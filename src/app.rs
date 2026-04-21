@@ -93,6 +93,10 @@ pub struct App {
     pub search_cursor: usize,
     /// Text in the Naming mode input field.
     pub name_input: String,
+    /// Cursor position (char index) within `search_query`.
+    pub search_input_pos: usize,
+    /// Cursor position (char index) within `name_input`.
+    pub name_input_pos: usize,
     /// Timestamp of the last Ctrl+C press, for double-tap quit.
     pub last_ctrl_c: Option<Instant>,
     /// Error message to display in the hint bar.
@@ -122,6 +126,8 @@ impl App {
             search_results: Vec::new(),
             search_cursor: 0,
             name_input: String::new(),
+            search_input_pos: 0,
+            name_input_pos: 0,
             last_ctrl_c: None,
             error_message: None,
             ctrl_c_hint: false,
@@ -235,6 +241,19 @@ impl App {
                 self.move_search_cursor_down();
                 AppAction::Continue
             }
+            KeyCode::Left => {
+                if self.search_input_pos > 0 {
+                    self.search_input_pos -= 1;
+                }
+                AppAction::Continue
+            }
+            KeyCode::Right => {
+                let char_count = self.search_query.chars().count();
+                if self.search_input_pos < char_count {
+                    self.search_input_pos += 1;
+                }
+                AppAction::Continue
+            }
             KeyCode::Enter => {
                 self.confirm_destination();
                 AppAction::Continue
@@ -251,14 +270,36 @@ impl App {
                 self.toggle_quick_look();
                 AppAction::Continue
             }
+            KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.search_query.clear();
+                self.search_input_pos = 0;
+                self.update_search_results();
+                AppAction::Continue
+            }
             KeyCode::Char(c) => {
-                self.search_query.push(c);
+                let byte_pos = self
+                    .search_query
+                    .char_indices()
+                    .nth(self.search_input_pos)
+                    .map(|(b, _)| b)
+                    .unwrap_or(self.search_query.len());
+                self.search_query.insert(byte_pos, c);
+                self.search_input_pos += 1;
                 self.update_search_results();
                 AppAction::Continue
             }
             KeyCode::Backspace => {
-                self.search_query.pop();
-                self.update_search_results();
+                if self.search_input_pos > 0 {
+                    let byte_pos = self
+                        .search_query
+                        .char_indices()
+                        .nth(self.search_input_pos - 1)
+                        .map(|(b, _)| b)
+                        .unwrap_or(self.search_query.len());
+                    self.search_query.remove(byte_pos);
+                    self.search_input_pos -= 1;
+                    self.update_search_results();
+                }
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -268,6 +309,19 @@ impl App {
     /// Handles key events in SubfolderCreation mode.
     fn handle_subfolder_creation(&mut self, event: KeyEvent) -> AppAction {
         match event.code {
+            KeyCode::Left => {
+                if self.search_input_pos > 0 {
+                    self.search_input_pos -= 1;
+                }
+                AppAction::Continue
+            }
+            KeyCode::Right => {
+                let char_count = self.search_query.chars().count();
+                if self.search_input_pos < char_count {
+                    self.search_input_pos += 1;
+                }
+                AppAction::Continue
+            }
             KeyCode::Enter => {
                 self.create_subfolder();
                 AppAction::Continue
@@ -276,12 +330,33 @@ impl App {
                 self.cancel_subfolder_creation();
                 AppAction::Continue
             }
+            KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.search_query.clear();
+                self.search_input_pos = 0;
+                AppAction::Continue
+            }
             KeyCode::Char(c) => {
-                self.search_query.push(c);
+                let byte_pos = self
+                    .search_query
+                    .char_indices()
+                    .nth(self.search_input_pos)
+                    .map(|(b, _)| b)
+                    .unwrap_or(self.search_query.len());
+                self.search_query.insert(byte_pos, c);
+                self.search_input_pos += 1;
                 AppAction::Continue
             }
             KeyCode::Backspace => {
-                self.search_query.pop();
+                if self.search_input_pos > 0 {
+                    let byte_pos = self
+                        .search_query
+                        .char_indices()
+                        .nth(self.search_input_pos - 1)
+                        .map(|(b, _)| b)
+                        .unwrap_or(self.search_query.len());
+                    self.search_query.remove(byte_pos);
+                    self.search_input_pos -= 1;
+                }
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -291,12 +366,26 @@ impl App {
     /// Handles key events in Naming mode.
     fn handle_naming(&mut self, event: KeyEvent) -> AppAction {
         match event.code {
+            KeyCode::Left => {
+                if self.name_input_pos > 0 {
+                    self.name_input_pos -= 1;
+                }
+                AppAction::Continue
+            }
+            KeyCode::Right => {
+                let char_count = self.name_input.chars().count();
+                if self.name_input_pos < char_count {
+                    self.name_input_pos += 1;
+                }
+                AppAction::Continue
+            }
             KeyCode::Enter => self.confirm_move(),
             KeyCode::Esc => {
                 if self.name_input.is_empty() {
                     self.cancel_naming();
                 } else {
                     self.name_input.clear();
+                    self.name_input_pos = 0;
                 }
                 AppAction::Continue
             }
@@ -304,12 +393,33 @@ impl App {
                 self.toggle_quick_look();
                 AppAction::Continue
             }
+            KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.name_input.clear();
+                self.name_input_pos = 0;
+                AppAction::Continue
+            }
             KeyCode::Char(c) => {
-                self.name_input.push(c);
+                let byte_pos = self
+                    .name_input
+                    .char_indices()
+                    .nth(self.name_input_pos)
+                    .map(|(b, _)| b)
+                    .unwrap_or(self.name_input.len());
+                self.name_input.insert(byte_pos, c);
+                self.name_input_pos += 1;
                 AppAction::Continue
             }
             KeyCode::Backspace => {
-                self.name_input.pop();
+                if self.name_input_pos > 0 {
+                    let byte_pos = self
+                        .name_input
+                        .char_indices()
+                        .nth(self.name_input_pos - 1)
+                        .map(|(b, _)| b)
+                        .unwrap_or(self.name_input.len());
+                    self.name_input.remove(byte_pos);
+                    self.name_input_pos -= 1;
+                }
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -397,6 +507,7 @@ impl App {
         }
         self.state = AppState::Searching;
         self.search_query.clear();
+        self.search_input_pos = 0;
         self.search_cursor = 0;
         if self.dest_history.is_empty() {
             self.search_results = self.dest_index.top_level_dirs();
@@ -413,6 +524,7 @@ impl App {
         self.selected_dest = Some(dest);
         self.state = AppState::Naming;
         self.name_input.clear();
+        self.name_input_pos = 0;
     }
 
     /// Transitions from Searching to SubfolderCreation mode.
@@ -423,12 +535,14 @@ impl App {
         self.state = AppState::SubfolderCreation;
         // Repurpose search_query for folder name input; save cursor position.
         self.search_query.clear();
+        self.search_input_pos = 0;
     }
 
     /// Cancels Searching and returns to Browsing.
     fn cancel_to_browsing(&mut self) {
         self.state = AppState::Browsing;
         self.search_query.clear();
+        self.search_input_pos = 0;
         self.search_results.clear();
         self.search_cursor = 0;
     }
@@ -443,24 +557,30 @@ impl App {
         if folder_name.is_empty() {
             self.state = AppState::Searching;
             self.search_query.clear();
+            self.search_input_pos = 0;
             return;
         }
 
         let Some(parent) = self.search_results.get(self.search_cursor).cloned() else {
             self.state = AppState::Searching;
             self.search_query.clear();
+            self.search_input_pos = 0;
             return;
         };
 
         self.selected_dest = Some(format!("{parent}/{folder_name}"));
         self.search_query.clear();
+        self.search_input_pos = 0;
         self.state = AppState::Naming;
+        self.name_input.clear();
+        self.name_input_pos = 0;
     }
 
     /// Cancels subfolder creation and returns to Searching.
     fn cancel_subfolder_creation(&mut self) {
         self.state = AppState::Searching;
         self.search_query.clear();
+        self.search_input_pos = 0;
         self.update_search_results();
     }
 
@@ -518,8 +638,10 @@ impl App {
     fn cancel_naming(&mut self) {
         self.state = AppState::Searching;
         self.name_input.clear();
+        self.name_input_pos = 0;
         // Restore search state.
         self.search_query.clear();
+        self.search_input_pos = 0;
         self.update_search_results();
     }
 
@@ -546,7 +668,9 @@ impl App {
                 self.moved.insert(file.path.clone(), dest_path.clone());
                 self.state = AppState::Browsing;
                 self.name_input.clear();
+                self.name_input_pos = 0;
                 self.search_query.clear();
+                self.search_input_pos = 0;
 
                 // Record destination in session history, most-recent first.
                 self.dest_history.retain(|entry| *entry != dest_rel);
@@ -828,9 +952,11 @@ mod tests {
         let mut app = make_app_with_files(files);
         app.state = AppState::Searching;
         app.search_query = "abc".to_string();
+        app.search_input_pos = 3;
 
         app.handle_event(make_key_event(KeyCode::Backspace));
         assert_eq!(app.search_query, "ab");
+        assert_eq!(app.search_input_pos, 2);
     }
 
     #[test]
@@ -1444,5 +1570,172 @@ mod tests {
 
         assert_eq!(app.dest_history.len(), MAX_DEST_HISTORY);
         assert_eq!(app.dest_history[0], new_dest);
+    }
+
+    #[test]
+    fn searching_left_right_moves_cursor() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Searching;
+        app.search_query = "abc".to_string();
+        app.search_input_pos = 3;
+
+        app.handle_event(make_key_event(KeyCode::Left));
+        assert_eq!(app.search_input_pos, 2);
+
+        app.handle_event(make_key_event(KeyCode::Left));
+        assert_eq!(app.search_input_pos, 1);
+
+        app.handle_event(make_key_event(KeyCode::Right));
+        assert_eq!(app.search_input_pos, 2);
+
+        // Cannot go past end.
+        app.handle_event(make_key_event(KeyCode::Right));
+        app.handle_event(make_key_event(KeyCode::Right));
+        assert_eq!(app.search_input_pos, 3);
+
+        // Cannot go below zero.
+        app.handle_event(make_key_event(KeyCode::Left));
+        app.handle_event(make_key_event(KeyCode::Left));
+        app.handle_event(make_key_event(KeyCode::Left));
+        app.handle_event(make_key_event(KeyCode::Left));
+        assert_eq!(app.search_input_pos, 0);
+    }
+
+    #[test]
+    fn searching_insert_at_cursor_position() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Searching;
+        app.search_query = "ac".to_string();
+        app.search_input_pos = 1;
+
+        app.handle_event(make_key_event(KeyCode::Char('b')));
+        assert_eq!(app.search_query, "abc");
+        assert_eq!(app.search_input_pos, 2);
+    }
+
+    #[test]
+    fn searching_backspace_at_middle_removes_left_char() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Searching;
+        app.search_query = "abc".to_string();
+        app.search_input_pos = 2;
+
+        app.handle_event(make_key_event(KeyCode::Backspace));
+        assert_eq!(app.search_query, "ac");
+        assert_eq!(app.search_input_pos, 1);
+    }
+
+    #[test]
+    fn searching_backspace_at_zero_does_nothing() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Searching;
+        app.search_query = "abc".to_string();
+        app.search_input_pos = 0;
+
+        app.handle_event(make_key_event(KeyCode::Backspace));
+        assert_eq!(app.search_query, "abc");
+        assert_eq!(app.search_input_pos, 0);
+    }
+
+    #[test]
+    fn naming_left_right_moves_cursor() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "hi".to_string();
+        app.name_input_pos = 2;
+
+        app.handle_event(make_key_event(KeyCode::Left));
+        assert_eq!(app.name_input_pos, 1);
+
+        app.handle_event(make_key_event(KeyCode::Right));
+        assert_eq!(app.name_input_pos, 2);
+
+        // Cannot exceed length.
+        app.handle_event(make_key_event(KeyCode::Right));
+        assert_eq!(app.name_input_pos, 2);
+
+        // Cannot go below zero.
+        app.handle_event(make_key_event(KeyCode::Left));
+        app.handle_event(make_key_event(KeyCode::Left));
+        app.handle_event(make_key_event(KeyCode::Left));
+        assert_eq!(app.name_input_pos, 0);
+    }
+
+    #[test]
+    fn naming_insert_at_cursor_position() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "ac".to_string();
+        app.name_input_pos = 1;
+
+        app.handle_event(make_key_event(KeyCode::Char('b')));
+        assert_eq!(app.name_input, "abc");
+        assert_eq!(app.name_input_pos, 2);
+    }
+
+    #[test]
+    fn naming_backspace_at_middle_removes_left_char() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "abc".to_string();
+        app.name_input_pos = 2;
+
+        app.handle_event(make_key_event(KeyCode::Backspace));
+        assert_eq!(app.name_input, "ac");
+        assert_eq!(app.name_input_pos, 1);
+    }
+
+    #[test]
+    fn naming_backspace_at_zero_does_nothing() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "abc".to_string();
+        app.name_input_pos = 0;
+
+        app.handle_event(make_key_event(KeyCode::Backspace));
+        assert_eq!(app.name_input, "abc");
+        assert_eq!(app.name_input_pos, 0);
+    }
+
+    #[test]
+    fn naming_esc_clears_input_and_resets_cursor() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::Naming;
+        app.name_input = "hello".to_string();
+        app.name_input_pos = 3;
+
+        app.handle_event(make_key_event(KeyCode::Esc));
+        assert_eq!(app.name_input, "");
+        assert_eq!(app.name_input_pos, 0);
+        assert_eq!(app.state, AppState::Naming);
+    }
+
+    #[test]
+    fn subfolder_creation_insert_and_cursor() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let mut app = make_app_with_files(files);
+        app.state = AppState::SubfolderCreation;
+        app.search_query = "ac".to_string();
+        app.search_input_pos = 1;
+
+        app.handle_event(make_key_event(KeyCode::Char('b')));
+        assert_eq!(app.search_query, "abc");
+        assert_eq!(app.search_input_pos, 2);
+
+        app.handle_event(make_key_event(KeyCode::Left));
+        assert_eq!(app.search_input_pos, 1);
+
+        app.handle_event(make_key_event(KeyCode::Backspace));
+        assert_eq!(app.search_query, "bc");
+        assert_eq!(app.search_input_pos, 0);
     }
 }
