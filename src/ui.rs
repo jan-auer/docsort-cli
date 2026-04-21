@@ -121,6 +121,36 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Renders the destination search mode with split pane.
 fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
+    render_search_pane(frame, app, area, "> ", Color::Cyan, "type to search");
+}
+
+/// Renders the subfolder creation mode (same layout as search, but with folder name input).
+fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
+    render_search_pane(
+        frame,
+        app,
+        area,
+        "New folder: ",
+        Color::Magenta,
+        "type folder name",
+    );
+}
+
+/// Shared split-pane renderer used by both search and subfolder-creation modes.
+///
+/// Renders a 60/40 horizontal split: the left pane shows the search results
+/// list with a text input at the bottom; the right pane shows the files inside
+/// the highlighted destination. The `prefix` label and its `prefix_color` are
+/// shown before the cursor in the input line; `placeholder` is shown when the
+/// query is empty.
+fn render_search_pane(
+    frame: &mut Frame,
+    app: &App,
+    area: Rect,
+    prefix: &str,
+    prefix_color: Color,
+    placeholder: &str,
+) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
@@ -148,13 +178,16 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     for i in start..end {
         let result = &app.search_results[i];
         let is_highlighted = i == app.search_cursor;
-        let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
+        let row_prefix = if is_highlighted { "\u{25b6} " } else { "  " };
         let style = if is_highlighted {
             Style::default().add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };
-        lines.push(Line::from(Span::styled(format!("{prefix}{result}"), style)));
+        lines.push(Line::from(Span::styled(
+            format!("{row_prefix}{result}"),
+            style,
+        )));
     }
 
     let results_paragraph = Paragraph::new(lines);
@@ -163,8 +196,8 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     // Input line at the bottom of the left pane.
     let input_spans = if app.search_query.is_empty() {
         vec![
-            Span::styled("> ", Style::default().fg(Color::Cyan)),
-            Span::styled("type to search", Style::default().fg(HINT_COLOR)),
+            Span::styled(prefix.to_string(), Style::default().fg(prefix_color)),
+            Span::styled(placeholder, Style::default().fg(HINT_COLOR)),
         ]
     } else {
         let before: String = app
@@ -178,7 +211,10 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
             .chars()
             .skip(app.search_input_pos + 1)
             .collect();
-        let mut spans = vec![Span::styled("> ", Style::default().fg(Color::Cyan))];
+        let mut spans = vec![Span::styled(
+            prefix.to_string(),
+            Style::default().fg(prefix_color),
+        )];
         spans.push(Span::raw(before));
         if let Some(ch) = cursor_char {
             spans.push(Span::styled(
@@ -199,91 +235,6 @@ fn render_searching(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(input_paragraph, input_area);
 
     // Right pane: files in the highlighted destination.
-    render_dest_files(frame, app, right_area);
-}
-
-/// Renders the subfolder creation mode (same as search, but with folder name input).
-fn render_subfolder_creation(frame: &mut Frame, app: &App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(area);
-
-    let left_area = chunks[0];
-    let right_area = chunks[1];
-
-    // Left pane: split vertically into results (top) and input (bottom).
-    let left_block = Block::default().padding(Padding::new(0, 1, 0, 0));
-    let left_inner = left_block.inner(left_area);
-
-    let left_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
-        .split(left_inner);
-
-    let results_area = left_chunks[0];
-    let input_area = left_chunks[1];
-
-    let visible_rows = results_area.height as usize;
-    let (start, end) = visible_window(app.search_cursor, app.search_results.len(), visible_rows);
-
-    let mut lines: Vec<Line> = Vec::new();
-    for i in start..end {
-        let result = &app.search_results[i];
-        let is_highlighted = i == app.search_cursor;
-        let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
-        let style = if is_highlighted {
-            Style::default().add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        };
-        lines.push(Line::from(Span::styled(format!("{prefix}{result}"), style)));
-    }
-
-    let results_paragraph = Paragraph::new(lines);
-    frame.render_widget(results_paragraph, results_area);
-
-    // Folder name input line at the bottom.
-    let folder_input_spans = if app.search_query.is_empty() {
-        vec![
-            Span::styled("New folder: ", Style::default().fg(Color::Magenta)),
-            Span::styled("type folder name", Style::default().fg(HINT_COLOR)),
-        ]
-    } else {
-        let before: String = app
-            .search_query
-            .chars()
-            .take(app.search_input_pos)
-            .collect();
-        let cursor_char: Option<char> = app.search_query.chars().nth(app.search_input_pos);
-        let after: String = app
-            .search_query
-            .chars()
-            .skip(app.search_input_pos + 1)
-            .collect();
-        let mut spans = vec![Span::styled(
-            "New folder: ",
-            Style::default().fg(Color::Magenta),
-        )];
-        spans.push(Span::raw(before));
-        if let Some(ch) = cursor_char {
-            spans.push(Span::styled(
-                ch.to_string(),
-                Style::default().add_modifier(Modifier::REVERSED),
-            ));
-        } else {
-            spans.push(Span::styled(
-                " ",
-                Style::default().add_modifier(Modifier::REVERSED),
-            ));
-        }
-        spans.push(Span::raw(after));
-        spans
-    };
-
-    let input_paragraph = Paragraph::new(Line::from(folder_input_spans));
-    frame.render_widget(input_paragraph, input_area);
-
     render_dest_files(frame, app, right_area);
 }
 
