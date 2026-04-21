@@ -395,11 +395,7 @@ fn render_naming(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().add_modifier(Modifier::REVERSED),
         ));
         new_name_spans.push(Span::raw(name_after));
-        if app.name_input.is_empty() {
-            if !ext_suffix.is_empty() {
-                new_name_spans.push(Span::styled("<keep>", Style::default().fg(HINT_COLOR)));
-            }
-        } else if !ext_suffix.is_empty() {
+        if !ext_suffix.is_empty() {
             new_name_spans.push(Span::styled(&ext_suffix, Style::default().fg(HINT_COLOR)));
         }
     } else if app.name_input.is_empty() {
