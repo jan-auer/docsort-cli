@@ -124,6 +124,25 @@ fn init_terminal(height: u16) -> Result<DefaultTerminal> {
     Ok(terminal)
 }
 
+/// Clears the inline viewport by moving the cursor up and erasing to end of screen.
+///
+/// Must be called before dropping the terminal so stale content from the old
+/// viewport does not remain visible when the terminal is recreated at a
+/// different height.
+fn clear_viewport(height: u16) -> Result<()> {
+    use crossterm::{
+        cursor, execute,
+        terminal::{Clear, ClearType},
+    };
+    let mut stdout = std::io::stdout();
+    execute!(
+        stdout,
+        cursor::MoveUp(height),
+        Clear(ClearType::FromCursorDown)
+    )?;
+    Ok(())
+}
+
 /// Runs the main TUI event loop with the commit-and-reinit pattern.
 fn run_event_loop(app: &mut App) -> Result<()> {
     let mut current_height = viewport_height(app.files.len());
@@ -153,6 +172,7 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 // Resize the terminal if the desired viewport height changed.
                 let desired = app.desired_viewport_height();
                 if desired != current_height {
+                    clear_viewport(current_height)?;
                     drop(terminal);
                     ratatui::restore();
                     current_height = desired;
@@ -160,7 +180,9 @@ fn run_event_loop(app: &mut App) -> Result<()> {
                 }
             }
             AppAction::CommitMove { src, dest, name } => {
-                // Tear down the terminal so the summary line enters the scroll buffer.
+                // Clear stale viewport content before tearing down the terminal so
+                // the summary line is printed on a clean line in the scroll buffer.
+                clear_viewport(current_height)?;
                 drop(terminal);
                 ratatui::restore();
 
