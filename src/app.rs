@@ -5,10 +5,10 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use crate::config::Config;
+use crate::config::{Config, InboxConfig};
 use crate::dest::DestIndex;
 use crate::file_ops;
-use crate::inbox::InboxFile;
+use crate::inbox::{self, sort_inbox_files, InboxFile};
 use crate::quicklook::QuickLook;
 
 /// Maximum number of visible rows in the inline TUI viewport.
@@ -114,6 +114,8 @@ pub struct App {
     pub dest_history: Vec<String>,
     /// Pending move operation awaiting overwrite confirmation: `(src, dest_path, final_name, dest_rel)`.
     pending_overwrite: Option<(PathBuf, PathBuf, String, String)>,
+    /// Inbox configurations used to re-scan when refreshing.
+    inboxes: Vec<InboxConfig>,
 }
 
 impl App {
@@ -139,6 +141,7 @@ impl App {
             selected_dest: None,
             dest_history: Vec::new(),
             pending_overwrite: None,
+            inboxes: config.inboxes.clone(),
         }
     }
 
@@ -230,6 +233,10 @@ impl App {
             }
             KeyCode::Char('u') => {
                 self.undo_move();
+                AppAction::Continue
+            }
+            KeyCode::Char('r') => {
+                self.refresh_files();
                 AppAction::Continue
             }
             _ => AppAction::Continue,
@@ -577,6 +584,60 @@ impl App {
         }
     }
 
+    /// Re-scans the inbox directories and merges the results into the current file list.
+    ///
+    /// - Files already moved this session (`self.moved`) are kept as-is.
+    /// - Unmoved files always use the freshest metadata from the scan.
+    /// - Unmoved files that no longer exist on disk are removed.
+    /// - New files found on disk are added.
+    /// - The cursor is preserved on the same file when possible; otherwise it is
+    ///   clamped to the last valid index.
+    fn refresh_files(&mut self) {
+        let fresh = match inbox::scan_inboxes(&self.inboxes) {
+            Ok(files) => files,
+            Err(e) => {
+                self.error_message = Some(format!("Refresh failed: {e}"));
+                return;
+            }
+        };
+
+        // Remember the path at the current cursor so we can restore position.
+        let cursor_path = self.files.get(self.cursor).map(|f| f.path.clone());
+
+        // Build a set of paths present in the fresh scan for quick lookup.
+        let fresh_paths: std::collections::HashSet<&PathBuf> =
+            fresh.iter().map(|f| &f.path).collect();
+
+        // Collect moved files whose paths are no longer in the fresh scan so
+        // they can be re-appended after the unmoved list.
+        let moved_only: Vec<InboxFile> = self
+            .files
+            .drain(..)
+            .filter(|f| self.moved.contains_key(&f.path) && !fresh_paths.contains(&f.path))
+            .collect();
+
+        // Start from the fresh scan so that every unmoved file has up-to-date
+        // metadata (modification time, subfolder, group_sort_key).  Moved files
+        // that are still present on disk are implicitly included via the fresh
+        // list, which is fine — they will be re-appended in sorted position.
+        let mut unmoved: Vec<InboxFile> = fresh;
+        sort_inbox_files(&mut unmoved);
+
+        self.files.extend(unmoved);
+        self.files.extend(moved_only);
+
+        // Restore cursor to the same file if possible; otherwise clamp.
+        self.cursor = cursor_path
+            .and_then(|path| self.files.iter().position(|f| f.path == path))
+            .unwrap_or_else(|| {
+                if self.files.is_empty() {
+                    0
+                } else {
+                    self.cursor.min(self.files.len() - 1)
+                }
+            });
+    }
+
     /// Handles key events in ConfirmDelete mode.
     fn handle_confirm_delete(&mut self, event: KeyEvent) -> AppAction {
         match event.code {
@@ -904,11 +965,14 @@ mod tests {
     }
 
     fn make_inbox_file(label: &str, filename: &str, path: &str) -> InboxFile {
+        let modified = SystemTime::now();
         InboxFile {
             label: label.to_string(),
             path: PathBuf::from(path),
             filename: filename.to_string(),
-            modified: SystemTime::now(),
+            modified,
+            subfolder: None,
+            group_sort_key: modified,
         }
     }
 
@@ -1196,6 +1260,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1230,6 +1296,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1263,6 +1331,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1400,6 +1470,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1488,6 +1560,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1518,12 +1592,16 @@ mod tests {
                 path: src_path1.clone(),
                 filename: "a.pdf".to_string(),
                 modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
             },
             InboxFile {
                 label: "Inbox".to_string(),
                 path: src_path2.clone(),
                 filename: "b.pdf".to_string(),
                 modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
             },
         ];
 
@@ -1704,6 +1782,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let dir = tempfile::TempDir::new().unwrap();
@@ -1749,6 +1829,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let dir = tempfile::TempDir::new().unwrap();
@@ -1786,6 +1868,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1824,6 +1908,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1868,6 +1954,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -1908,6 +1996,8 @@ mod tests {
             path: src_path.clone(),
             filename: "doc.pdf".to_string(),
             modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
         }];
 
         let config = make_config(dir.path().to_str().unwrap());
@@ -2130,5 +2220,311 @@ mod tests {
         app.handle_event(make_key_event(KeyCode::Backspace));
         assert_eq!(app.search_query, "bc");
         assert_eq!(app.search_input_pos, 0);
+    }
+
+    #[test]
+    fn browsing_r_returns_continue_and_stays_browsing() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(inbox_dir.path().join("doc.pdf"), b"x").unwrap();
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: inbox_dir.path().join("doc.pdf"),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
+        }];
+        let mut app = App::new(files, index, &config);
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('r')));
+        assert_eq!(action, AppAction::Continue);
+        assert_eq!(app.state, AppState::Browsing);
+    }
+
+    #[test]
+    fn refresh_adds_new_file_from_disk() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(inbox_dir.path().join("existing.pdf"), b"x").unwrap();
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: inbox_dir.path().join("existing.pdf"),
+            filename: "existing.pdf".to_string(),
+            modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
+        }];
+        let mut app = App::new(files, index, &config);
+        assert_eq!(app.files.len(), 1);
+
+        // Drop a new file into the inbox.
+        std::fs::write(inbox_dir.path().join("new.pdf"), b"y").unwrap();
+
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        assert_eq!(app.files.len(), 2);
+        assert!(app.files.iter().any(|f| f.filename == "new.pdf"));
+        assert!(app.files.iter().any(|f| f.filename == "existing.pdf"));
+    }
+
+    #[test]
+    fn refresh_removes_deleted_unmoved_file() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        let file_a = inbox_dir.path().join("a.pdf");
+        let file_b = inbox_dir.path().join("b.pdf");
+        std::fs::write(&file_a, b"a").unwrap();
+        std::fs::write(&file_b, b"b").unwrap();
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        let files = vec![
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: file_a.clone(),
+                filename: "a.pdf".to_string(),
+                modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
+            },
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: file_b.clone(),
+                filename: "b.pdf".to_string(),
+                modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
+            },
+        ];
+        let mut app = App::new(files, index, &config);
+        assert_eq!(app.files.len(), 2);
+
+        // Delete b.pdf from disk.
+        std::fs::remove_file(&file_b).unwrap();
+
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        assert_eq!(app.files.len(), 1);
+        assert_eq!(app.files[0].filename, "a.pdf");
+    }
+
+    #[test]
+    fn refresh_keeps_moved_file_even_when_absent_from_inbox() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        let original_path = inbox_dir.path().join("doc.pdf");
+        // The file is not on disk (simulating it having been moved out of inbox).
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let dest_path = dest_dir.path().join("archive/doc.pdf");
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: original_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
+        }];
+        let mut app = App::new(files, index, &config);
+        // Mark the file as moved.
+        app.moved.insert(original_path.clone(), dest_path.clone());
+
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        // Moved file must remain in the list.
+        assert_eq!(app.files.len(), 1);
+        assert_eq!(app.files[0].path, original_path);
+    }
+
+    #[test]
+    fn refresh_preserves_cursor_on_same_file() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        let file_a = inbox_dir.path().join("a.pdf");
+        let file_b = inbox_dir.path().join("b.pdf");
+        std::fs::write(&file_a, b"a").unwrap();
+        std::fs::write(&file_b, b"b").unwrap();
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        let files = vec![
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: file_a.clone(),
+                filename: "a.pdf".to_string(),
+                modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
+            },
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: file_b.clone(),
+                filename: "b.pdf".to_string(),
+                modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
+            },
+        ];
+        let mut app = App::new(files, index, &config);
+        app.cursor = 1; // pointing at b.pdf
+
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        // Cursor must still point at b.pdf.
+        let cursor_file = &app.files[app.cursor];
+        assert_eq!(cursor_file.path, file_b);
+    }
+
+    #[test]
+    fn refresh_clamps_cursor_when_file_removed() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        let file_a = inbox_dir.path().join("a.pdf");
+        let file_b = inbox_dir.path().join("b.pdf");
+        std::fs::write(&file_a, b"a").unwrap();
+        std::fs::write(&file_b, b"b").unwrap();
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        // App starts knowing about both files.
+        let files = vec![
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: file_a.clone(),
+                filename: "a.pdf".to_string(),
+                modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
+            },
+            InboxFile {
+                label: "Inbox".to_string(),
+                path: file_b.clone(),
+                filename: "b.pdf".to_string(),
+                modified: SystemTime::now(),
+                subfolder: None,
+                group_sort_key: SystemTime::now(),
+            },
+        ];
+        let mut app = App::new(files, index, &config);
+        app.cursor = 1; // pointing at b.pdf
+
+        // Delete b.pdf so cursor must be clamped.
+        std::fs::remove_file(&file_b).unwrap();
+
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        assert_eq!(app.files.len(), 1);
+        // Cursor must be within bounds.
+        assert!(app.cursor < app.files.len());
+    }
+
+    /// Verifies that `refresh_files` replaces stale `InboxFile` metadata with
+    /// fresh data from disk when a file's modification time has changed.
+    #[test]
+    fn refresh_updates_metadata_for_changed_file() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        let file_path = inbox_dir.path().join("doc.pdf");
+        std::fs::write(&file_path, b"v1").unwrap();
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+
+        // Capture the initial modified time before creating the App.
+        let initial_modified = std::fs::metadata(&file_path).unwrap().modified().unwrap();
+
+        let initial_file = InboxFile {
+            label: "Inbox".to_string(),
+            path: file_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: initial_modified,
+            subfolder: None,
+            group_sort_key: initial_modified,
+        };
+        let mut app = App::new(vec![initial_file], index, &config);
+
+        // Wait briefly to ensure the filesystem clock advances, then rewrite the
+        // file so its modification time is strictly newer than `initial_modified`.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&file_path, b"v2").unwrap();
+
+        let updated_modified = std::fs::metadata(&file_path).unwrap().modified().unwrap();
+        assert!(
+            updated_modified > initial_modified,
+            "file mtime should advance after rewrite"
+        );
+
+        // Trigger refresh.
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        assert_eq!(app.files.len(), 1);
+        assert_eq!(
+            app.files[0].modified, updated_modified,
+            "refresh should replace stale mtime with fresh value from disk"
+        );
     }
 }

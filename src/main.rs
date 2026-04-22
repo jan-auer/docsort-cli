@@ -33,7 +33,7 @@ fn main() -> Result<()> {
     let config_path = resolve_config_path(args.config)?;
     let cfg = config::load_config(&config_path)?;
 
-    let files = inbox::scan_inboxes(&cfg)?;
+    let files = inbox::scan_inboxes(&cfg.inboxes)?;
 
     if files.is_empty() {
         println!("Nothing to sort.");
