@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -81,6 +81,8 @@ pub struct App {
     pub cursor: usize,
     /// Records src → dest for files moved during this session.
     pub moved: HashMap<PathBuf, PathBuf>,
+    /// Records paths of files deleted during this session.
+    pub deleted: HashSet<PathBuf>,
     /// Fuzzy-searchable index of destination subdirectories.
     pub dest_index: DestIndex,
     /// Quick Look preview manager.
@@ -125,6 +127,7 @@ impl App {
             files,
             cursor: 0,
             moved: HashMap::new(),
+            deleted: HashSet::new(),
             dest_index,
             quick_look: QuickLook::new(),
             state: AppState::Browsing,
@@ -531,13 +534,13 @@ impl App {
 
     /// Transitions from Browsing to ConfirmDelete mode for the highlighted file.
     ///
-    /// Does nothing when the highlighted file has already been moved this session.
+    /// Does nothing when the highlighted file has already been moved or deleted this session.
     fn enter_confirm_delete(&mut self) {
         if self.files.is_empty() {
             return;
         }
         if let Some(file) = self.files.get(self.cursor) {
-            if self.moved.contains_key(&file.path) {
+            if self.moved.contains_key(&file.path) || self.deleted.contains(&file.path) {
                 return;
             }
         }
@@ -608,12 +611,15 @@ impl App {
         let fresh_paths: std::collections::HashSet<&PathBuf> =
             fresh.iter().map(|f| &f.path).collect();
 
-        // Collect moved files whose paths are no longer in the fresh scan so
+        // Collect moved or deleted files whose paths are no longer in the fresh scan so
         // they can be re-appended after the unmoved list.
         let moved_only: Vec<InboxFile> = self
             .files
             .drain(..)
-            .filter(|f| self.moved.contains_key(&f.path) && !fresh_paths.contains(&f.path))
+            .filter(|f| {
+                (self.moved.contains_key(&f.path) || self.deleted.contains(&f.path))
+                    && !fresh_paths.contains(&f.path)
+            })
             .collect();
 
         // Start from the fresh scan so that every unmoved file has up-to-date
@@ -649,7 +655,10 @@ impl App {
         }
     }
 
-    /// Deletes the highlighted file from disk and from the file list.
+    /// Deletes the highlighted file from disk and marks it as deleted in the session.
+    ///
+    /// The file is kept in the list (dimmed with a red ✗) rather than removed,
+    /// mirroring how moved files are retained.
     fn confirm_delete(&mut self) -> AppAction {
         let Some(file) = self.files.get(self.cursor) else {
             self.state = AppState::Browsing;
@@ -662,11 +671,7 @@ impl App {
         match std::fs::remove_file(&path) {
             Ok(()) => {
                 self.quick_look.close();
-                self.files.remove(self.cursor);
-                // Clamp cursor so it remains in bounds.
-                if self.cursor > 0 && self.cursor >= self.files.len() {
-                    self.cursor = self.files.len().saturating_sub(1);
-                }
+                self.deleted.insert(original_path.clone());
                 self.state = AppState::Browsing;
                 AppAction::DeleteFile {
                     path: original_path,
@@ -863,6 +868,14 @@ impl App {
         self.files
             .get(self.cursor)
             .map(|f| self.moved.contains_key(&f.path))
+            .unwrap_or(false)
+    }
+
+    /// Returns `true` if the currently highlighted file has been deleted this session.
+    pub fn current_file_is_deleted(&self) -> bool {
+        self.files
+            .get(self.cursor)
+            .map(|f| self.deleted.contains(&f.path))
             .unwrap_or(false)
     }
 
@@ -2472,6 +2485,108 @@ mod tests {
         assert_eq!(app.files.len(), 1);
         // Cursor must be within bounds.
         assert!(app.cursor < app.files.len());
+    }
+
+    #[test]
+    fn delete_marks_file_as_deleted_and_keeps_it_in_list() {
+        let src_dir = tempfile::TempDir::new().unwrap();
+        let file_path = src_dir.path().join("doc.pdf");
+        std::fs::write(&file_path, b"content").unwrap();
+
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: file_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
+        }];
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = make_config(dir.path().to_str().unwrap());
+        let index = DestIndex::new(dir.path()).unwrap();
+        let mut app = App::new(files, index, &config);
+
+        // Confirm delete via state machine.
+        app.state = AppState::ConfirmDelete;
+        let action = app.handle_event(make_key_event(KeyCode::Char('y')));
+
+        match action {
+            AppAction::DeleteFile { path } => assert_eq!(path, file_path),
+            other => panic!("expected DeleteFile, got {other:?}"),
+        }
+
+        // File must still be in the list.
+        assert_eq!(app.files.len(), 1);
+        // File must be recorded as deleted.
+        assert!(app.deleted.contains(&file_path));
+        // File must be gone from disk.
+        assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn delete_action_disallowed_on_already_deleted_file() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let (mut app, _dir) = make_app_with_files(files);
+
+        // Mark the file as already deleted.
+        app.deleted.insert(PathBuf::from("/tmp/doc.pdf"));
+
+        let action = app.handle_event(make_key_event(KeyCode::Char('d')));
+        assert_eq!(action, AppAction::Continue);
+        // Must stay in Browsing — delete not allowed on deleted files.
+        assert_eq!(app.state, AppState::Browsing);
+    }
+
+    #[test]
+    fn current_file_is_deleted_returns_false_for_live_file() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let (app, _dir) = make_app_with_files(files);
+        assert!(!app.current_file_is_deleted());
+    }
+
+    #[test]
+    fn current_file_is_deleted_returns_true_for_deleted_file() {
+        let files = vec![make_inbox_file("Inbox", "doc.pdf", "/tmp/doc.pdf")];
+        let (mut app, _dir) = make_app_with_files(files);
+        app.deleted.insert(PathBuf::from("/tmp/doc.pdf"));
+        assert!(app.current_file_is_deleted());
+    }
+
+    #[test]
+    fn refresh_keeps_deleted_file_in_list() {
+        let inbox_dir = tempfile::TempDir::new().unwrap();
+        let original_path = inbox_dir.path().join("doc.pdf");
+        // File is not on disk — it was deleted.
+
+        let dest_dir = tempfile::TempDir::new().unwrap();
+        let config = Config {
+            inboxes: vec![crate::config::InboxConfig {
+                label: Some("Inbox".to_string()),
+                path: inbox_dir.path().to_path_buf(),
+            }],
+            destination: crate::config::DestinationConfig {
+                root: dest_dir.path().to_path_buf(),
+            },
+        };
+        let index = DestIndex::new(dest_dir.path()).unwrap();
+        let files = vec![InboxFile {
+            label: "Inbox".to_string(),
+            path: original_path.clone(),
+            filename: "doc.pdf".to_string(),
+            modified: SystemTime::now(),
+            subfolder: None,
+            group_sort_key: SystemTime::now(),
+        }];
+        let mut app = App::new(files, index, &config);
+        // Mark the file as deleted.
+        app.deleted.insert(original_path.clone());
+
+        app.handle_event(make_key_event(KeyCode::Char('r')));
+
+        // Deleted file must remain in the list.
+        assert_eq!(app.files.len(), 1);
+        assert_eq!(app.files[0].path, original_path);
     }
 
     /// Verifies that `refresh_files` replaces stale `InboxFile` metadata with

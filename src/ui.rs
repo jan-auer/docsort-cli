@@ -80,6 +80,7 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
         let file = &app.files[i];
         let is_highlighted = i == app.cursor;
         let is_moved = app.moved.contains_key(&file.path);
+        let is_deleted = app.deleted.contains(&file.path);
 
         let prefix = if is_highlighted { "\u{25b6} " } else { "  " };
 
@@ -91,16 +92,28 @@ fn render_browsing(frame: &mut Frame, app: &App, area: Rect) {
         // Chevron with leading space and trailing space, rendered in the label colour.
         let label_chevron = format!("{padded_label} \u{276f} ");
 
-        // For moved rows, "  ✓ " (4 chars) is appended after the filename.
-        let moved_suffix_len = if is_moved { 4 } else { 0 };
-        let budget = total_width.saturating_sub(fixed_overhead + moved_suffix_len);
+        // For moved/deleted rows, "  ✓ " or "  ✗ " (4 chars) is appended after the filename.
+        let suffix_len = if is_moved || is_deleted { 4 } else { 0 };
+        let budget = total_width.saturating_sub(fixed_overhead + suffix_len);
 
         let (subfolder_display, filename_display) =
             truncate_file_row(file.subfolder.as_deref(), &file.filename, budget);
 
         let mut spans: Vec<Span> = Vec::new();
 
-        if is_moved {
+        if is_deleted {
+            // Dimmed row with red cross.
+            let dim = Style::default().fg(HINT_COLOR);
+            let cross = Span::styled("\u{2717} ", Style::default().fg(Color::Red));
+            spans.push(Span::styled(prefix.to_string(), dim));
+            spans.push(Span::styled(label_chevron, dim));
+            if !subfolder_display.is_empty() {
+                spans.push(Span::styled(subfolder_display, dim));
+            }
+            spans.push(Span::styled(filename_display, dim));
+            spans.push(Span::raw("  "));
+            spans.push(cross);
+        } else if is_moved {
             // Dimmed row with green checkmark.
             let dim = Style::default().fg(HINT_COLOR);
             let check = Span::styled("\u{2713} ", Style::default().fg(Color::Green));
@@ -616,7 +629,9 @@ fn render_hint_bar(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         match app.state {
             AppState::Browsing => {
-                let text = if app.current_file_is_moved() {
+                let text = if app.current_file_is_deleted() {
+                    "\u{2191}\u{2193} navigate  r refresh  Space preview  o open  f finder  ^C quit"
+                } else if app.current_file_is_moved() {
                     "\u{2191}\u{2193} navigate  \u{21b5} file  u undo  r refresh  Space preview  o open  f finder  ^C quit"
                 } else {
                     "\u{2191}\u{2193} navigate  \u{21b5} file  d delete  r refresh  Space preview  o open  f finder  ^C quit"
